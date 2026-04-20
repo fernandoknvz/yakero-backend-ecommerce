@@ -1,0 +1,38 @@
+# ───────── Python ─────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# ───────── Env ─────────
+.env
+.env.*
+!.env.example
+
+# ───────── Logs ─────────
+*.log
+
+# ───────── Alembic ─────────
+alembic/versions/__pycache__/
+
+# ───────── OS ─────────
+.DS_Store
+Thumbs.db
+
+# ───────── VS Code ─────────
+.vscode/
+
+# ───────── Docker ─────────
+*.pid
+*.seed
+*.out
+
+# ───────── Tests ─────────
+.coverage
+htmlcov/

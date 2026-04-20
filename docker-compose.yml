@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: yakero_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: yakero_ecommerce
+      MYSQL_USER: yakero_user
+      MYSQL_PASSWORD: yakero_pass
+    ports:
+      - "3310:3306"
+    volumes:
+      - yakero_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: yakero_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql+asyncmy://yakero_user:yakero_pass@db:3306/yakero_ecommerce
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  yakero_db_data:
