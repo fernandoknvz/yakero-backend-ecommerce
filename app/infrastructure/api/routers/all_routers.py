@@ -2,7 +2,7 @@
 Routers FastAPI — todos los endpoints del ecommerce Yakero.
 Cada router está separado por dominio funcional.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, Header
+from fastapi import APIRouter, Depends, HTTPException, Request, Header, Query
 from fastapi.responses import JSONResponse
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...database.session import get_db
 from ...database.repositories.sql_repositories import (
     SQLUserRepository, SQLOrderRepository, SQLProductRepository,
-    SQLAddressRepository, SQLCouponRepository,
+    SQLAddressRepository, SQLCouponRepository, SQLPromotionRepository,
 )
+from ..errors import domain_error_to_http
 from ...payment.mercadopago_service import MercadoPagoService
 from ....application.use_cases.auth.auth_use_cases import RegisterUserUseCase, LoginUserUseCase
 from ....application.use_cases.orders.create_order import CreateOrderUseCase
@@ -30,9 +31,7 @@ from ....application.dtos.schemas import (
     CouponValidateInput, CouponOut,
     DeliveryFeeInput, DeliveryFeeOut,
 )
-from ....domain.exceptions import (
-    DomainError, NotFoundError, UnauthorizedError, ValidationError,
-)
+from ....domain.exceptions import DomainError
 from ....auth import (
     create_access_token, get_current_user, get_optional_user,
     require_admin, require_pos,
@@ -40,23 +39,6 @@ from ....auth import (
 from ....domain.models.entities import User
 
 # ── error handler ──────────────────────────────────────────────────────────────
-
-def domain_error_to_http(e: DomainError) -> HTTPException:
-    mapping = {
-        "NOT_FOUND": 404,
-        "UNAUTHORIZED": 401,
-        "VALIDATION_ERROR": 422,
-        "INVALID_TRANSITION": 409,
-        "COUPON_ERROR": 400,
-        "INSUFFICIENT_POINTS": 400,
-        "MODIFIER_REQUIRED": 422,
-        "PAYMENT_ERROR": 502,
-    }
-    return HTTPException(
-        status_code=mapping.get(e.code, 400),
-        detail={"code": e.code, "message": e.message},
-    )
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # AUTH ROUTER
@@ -97,8 +79,8 @@ products_router = APIRouter(prefix="/products", tags=["Productos"])
 
 @products_router.get("/", response_model=list[ProductOut])
 async def list_products(
-    category_id: Optional[int] = None,
-    q: Optional[str] = None,
+    category_id: Optional[int] = Query(default=None, ge=1),
+    q: Optional[str] = Query(default=None, min_length=2, max_length=80),
     db: AsyncSession = Depends(get_db),
 ):
     repo = SQLProductRepository(db)
@@ -129,7 +111,7 @@ async def full_menu(db: AsyncSession = Depends(get_db)):
     Devuelve todas las categorías con sus productos y modificadores.
     Este es el endpoint principal que el frontend consume al cargar.
     """
-    from ...database.models.orm_models import CategoryORM, ProductORM
+    from ...database.models.orm_models import CategoryORM, ProductORM, ModifierGroupORM
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
     from ...database.repositories.sql_repositories import _map_product
@@ -140,7 +122,7 @@ async def full_menu(db: AsyncSession = Depends(get_db)):
         .options(
             selectinload(CategoryORM.products).selectinload(
                 ProductORM.modifier_groups
-            )
+            ).selectinload(ModifierGroupORM.options)
         )
         .order_by(CategoryORM.sort_order)
     )
@@ -165,23 +147,7 @@ promotions_router = APIRouter(prefix="/promotions", tags=["Promociones"])
 
 @promotions_router.get("/", response_model=list[PromotionOut])
 async def list_promotions(db: AsyncSession = Depends(get_db)):
-    from ...database.models.orm_models import PromotionORM, PromotionSlotORM
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-    from datetime import datetime
-
-    now = datetime.utcnow()
-    result = await db.execute(
-        select(PromotionORM)
-        .where(
-            PromotionORM.is_active == True,
-            (PromotionORM.ends_at == None) | (PromotionORM.ends_at > now),
-        )
-        .options(
-            selectinload(PromotionORM.slots).selectinload(PromotionSlotORM.modifier_groups)
-        )
-    )
-    return result.scalars().all()
+    return await SQLPromotionRepository(db).get_all_active()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -205,10 +171,11 @@ async def create_order(
     points_svc = PointsService(user_repo)
 
     try:
+        order_repo = SQLOrderRepository(db)
         order = await CreateOrderUseCase(
-            order_repo=SQLOrderRepository(db),
+            order_repo=order_repo,
             product_repo=SQLProductRepository(db),
-            promotion_repo=None,   # se completa en la versión final
+            promotion_repo=SQLPromotionRepository(db),
             user_repo=user_repo,
             address_repo=SQLAddressRepository(db),
             coupon_repo=SQLCouponRepository(db),
@@ -221,14 +188,7 @@ async def create_order(
         pref_id = await mp.create_preference(order, back_urls={})
 
         # Guardar preference_id en el pedido
-        await SQLOrderRepository(db).update_payment(order.id, "", "")
-        from sqlalchemy import update as sql_update
-        from ...database.models.orm_models import OrderORM
-        await db.execute(
-            sql_update(OrderORM)
-            .where(OrderORM.id == order.id)
-            .values(mp_preference_id=pref_id)
-        )
+        await order_repo.update_mp_preference(order.id, pref_id)
 
         order.mp_preference_id = pref_id
         return order
@@ -239,8 +199,8 @@ async def create_order(
 
 @orders_router.get("/my", response_model=list[OrderOut])
 async def my_orders(
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -345,7 +305,7 @@ async def validate_coupon(
     db: AsyncSession = Depends(get_db),
 ):
     from decimal import Decimal
-    coupon = await SQLCouponRepository(db).get_by_code(data.coupon_code)
+    coupon = await SQLCouponRepository(db).get_by_code(data.code)
     if not coupon or not coupon.is_active:
         raise HTTPException(400, "Cupón inválido o expirado")
     if coupon.max_uses and coupon.uses_count >= coupon.max_uses:

@@ -2,7 +2,7 @@ from __future__ import annotations
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, Any
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from ...domain.models.enums import (
     OrderStatus, PaymentStatus, DeliveryType, TicketTag,
     UserRole, ModifierType,
@@ -134,7 +134,7 @@ class CategoryOut(BaseModel):
     ticket_tag: TicketTag
     image_url: Optional[str]
     sort_order: int
-    products: list[ProductOut] = []
+    products: list[ProductOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -187,9 +187,9 @@ class OrderItemInput(BaseModel):
     product_id: Optional[int] = None
     promotion_id: Optional[int] = None
     promotion_slot_id: Optional[int] = None
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1, le=99)
     notes: Optional[str] = None
-    selected_modifiers: list[OrderItemModifierInput] = []
+    selected_modifiers: list[OrderItemModifierInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def product_or_promotion(self) -> "OrderItemInput":
@@ -203,10 +203,10 @@ class CreateOrderInput(BaseModel):
     address_id: Optional[int] = None         # requerido si delivery
     guest_email: Optional[EmailStr] = None   # requerido si guest
     guest_phone: Optional[str] = None
-    items: list[OrderItemInput]
+    items: list[OrderItemInput] = Field(min_length=1)
     notes: Optional[str] = None
     coupon_code: Optional[str] = None
-    points_to_use: int = 0
+    points_to_use: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_delivery_address(self) -> "CreateOrderInput":
@@ -279,8 +279,8 @@ class PosOrderOut(BaseModel):
 # ─── Delivery fee ────────────────────────────────────────────────────────────
 
 class DeliveryFeeInput(BaseModel):
-    latitude: float
-    longitude: float
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
 
 
 class DeliveryFeeOut(BaseModel):

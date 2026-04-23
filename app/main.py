@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from .config import settings
 from .infrastructure.api.routers.all_routers import (
@@ -9,6 +8,7 @@ from .infrastructure.api.routers.all_routers import (
     delivery_router, coupons_router, webhooks_router, internal_router,
 )
 from .domain.exceptions import DomainError
+from .infrastructure.api.errors import domain_error_to_response
 
 app = FastAPI(
     title=settings.app_name,
@@ -29,19 +29,10 @@ app.add_middleware(
 # ── Global error handler ───────────────────────────────────────────────────────
 @app.exception_handler(DomainError)
 async def domain_error_handler(request: Request, exc: DomainError):
-    status_map = {
-        "NOT_FOUND": 404, "UNAUTHORIZED": 401,
-        "VALIDATION_ERROR": 422, "INVALID_TRANSITION": 409,
-        "COUPON_ERROR": 400, "INSUFFICIENT_POINTS": 400,
-        "MODIFIER_REQUIRED": 422, "PAYMENT_ERROR": 502,
-    }
-    return JSONResponse(
-        status_code=status_map.get(exc.code, 400),
-        content={"code": exc.code, "message": exc.message},
-    )
+    return domain_error_to_response(exc)
 
 # ── Routers ────────────────────────────────────────────────────────────────────
-PREFIX = "/api/v1"
+PREFIX = settings.api_v1_prefix
 
 app.include_router(auth_router,       prefix=PREFIX)
 app.include_router(products_router,   prefix=PREFIX)
@@ -57,4 +48,9 @@ app.include_router(internal_router,   prefix=PREFIX)  # /api/v1/internal/...
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": settings.app_name}
+    return {
+        "status": "ok",
+        "service": settings.app_name,
+        "environment": settings.environment,
+        "version": app.version,
+    }

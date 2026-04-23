@@ -10,7 +10,7 @@ from ....domain.models.entities import (
     Product, Category, ModifierGroup, ModifierOption,
     Promotion, PromotionSlot, User, Address, Coupon,
 )
-from ....domain.models.enums import OrderStatus, TicketTag
+from ....domain.models.enums import OrderStatus
 from ....domain.repositories.interfaces import (
     OrderRepository, ProductRepository, CategoryRepository,
     UserRepository, AddressRepository, PromotionRepository, CouponRepository,
@@ -18,7 +18,7 @@ from ....domain.repositories.interfaces import (
 from ..models.orm_models import (
     OrderORM, OrderItemORM, OrderItemModifierORM,
     ProductORM, CategoryORM, UserORM, AddressORM,
-    PromotionORM, CouponORM,
+    PromotionORM, PromotionSlotORM, ModifierGroupORM, CouponORM,
 )
 
 
@@ -45,6 +45,36 @@ def _map_product(p) -> Product:
         image_url=p.image_url, ticket_tag=p.ticket_tag,
         is_available=p.is_available, sort_order=p.sort_order,
         modifier_groups=[_map_modifier_group(g) for g in p.modifier_groups],
+    )
+
+def _map_category(c) -> Category:
+    return Category(
+        id=c.id, name=c.name, slug=c.slug, ticket_tag=c.ticket_tag,
+        image_url=c.image_url, sort_order=c.sort_order, is_active=c.is_active,
+    )
+
+def _map_promotion_slot(s) -> PromotionSlot:
+    return PromotionSlot(
+        id=s.id,
+        promotion_id=s.promotion_id,
+        slot_name=s.slot_name,
+        pieces=s.pieces,
+        ticket_tag=s.ticket_tag,
+        modifier_groups=[_map_modifier_group(g) for g in s.modifier_groups],
+    )
+
+def _map_promotion(p) -> Promotion:
+    return Promotion(
+        id=p.id,
+        name=p.name,
+        description=p.description,
+        promotion_type=p.promotion_type,
+        value=Decimal(p.value),
+        image_url=p.image_url,
+        is_active=p.is_active,
+        starts_at=p.starts_at,
+        ends_at=p.ends_at,
+        slots=[_map_promotion_slot(s) for s in p.slots],
     )
 
 def _map_order_item(i) -> OrderItem:
@@ -88,13 +118,15 @@ class SQLProductRepository(ProductRepository):
     def __init__(self, session: AsyncSession):
         self._db = session
 
+    _load_opts = [
+        selectinload(ProductORM.modifier_groups).selectinload(ModifierGroupORM.options)
+    ]
+
     async def get_all_active(self) -> list[Product]:
         result = await self._db.execute(
             select(ProductORM)
             .where(ProductORM.is_available == True)
-            .options(selectinload(ProductORM.modifier_groups).selectinload(
-                ProductORM.modifier_groups.property.mapper.class_.options
-            ))
+            .options(*self._load_opts)
             .order_by(ProductORM.sort_order)
         )
         return [_map_product(p) for p in result.scalars().all()]
@@ -103,9 +135,7 @@ class SQLProductRepository(ProductRepository):
         result = await self._db.execute(
             select(ProductORM)
             .where(ProductORM.id == product_id)
-            .options(selectinload(ProductORM.modifier_groups).selectinload(
-                ProductORM.modifier_groups.property.mapper.class_.options
-            ))
+            .options(*self._load_opts)
         )
         p = result.scalar_one_or_none()
         return _map_product(p) if p else None
@@ -114,9 +144,7 @@ class SQLProductRepository(ProductRepository):
         result = await self._db.execute(
             select(ProductORM)
             .where(ProductORM.category_id == category_id, ProductORM.is_available == True)
-            .options(selectinload(ProductORM.modifier_groups).selectinload(
-                ProductORM.modifier_groups.property.mapper.class_.options
-            ))
+            .options(*self._load_opts)
             .order_by(ProductORM.sort_order)
         )
         return [_map_product(p) for p in result.scalars().all()]
@@ -136,6 +164,63 @@ class SQLProductRepository(ProductRepository):
             )
         )
         return [_map_product(p) for p in result.scalars().all()]
+
+
+# Category Repository
+
+class SQLCategoryRepository(CategoryRepository):
+    def __init__(self, session: AsyncSession):
+        self._db = session
+
+    async def get_all_active(self) -> list[Category]:
+        result = await self._db.execute(
+            select(CategoryORM)
+            .where(CategoryORM.is_active == True)
+            .order_by(CategoryORM.sort_order)
+        )
+        return [_map_category(c) for c in result.scalars().all()]
+
+    async def get_by_id(self, category_id: int) -> Optional[Category]:
+        result = await self._db.execute(
+            select(CategoryORM).where(CategoryORM.id == category_id)
+        )
+        c = result.scalar_one_or_none()
+        return _map_category(c) if c else None
+
+
+# Promotion Repository
+
+class SQLPromotionRepository(PromotionRepository):
+    def __init__(self, session: AsyncSession):
+        self._db = session
+
+    _load_opts = [
+        selectinload(PromotionORM.slots)
+        .selectinload(PromotionSlotORM.modifier_groups)
+        .selectinload(ModifierGroupORM.options)
+    ]
+
+    async def get_all_active(self) -> list[Promotion]:
+        now = datetime.utcnow()
+        result = await self._db.execute(
+            select(PromotionORM)
+            .where(
+                PromotionORM.is_active == True,
+                (PromotionORM.starts_at == None) | (PromotionORM.starts_at <= now),
+                (PromotionORM.ends_at == None) | (PromotionORM.ends_at > now),
+            )
+            .options(*self._load_opts)
+        )
+        return [_map_promotion(p) for p in result.scalars().all()]
+
+    async def get_by_id(self, promotion_id: int) -> Optional[Promotion]:
+        result = await self._db.execute(
+            select(PromotionORM)
+            .where(PromotionORM.id == promotion_id)
+            .options(*self._load_opts)
+        )
+        p = result.scalar_one_or_none()
+        return _map_promotion(p) if p else None
 
 
 # ─── Order Repository ─────────────────────────────────────────────────────────
@@ -239,6 +324,16 @@ class SQLOrderRepository(OrderRepository):
         )
         return await self.get_by_id(order_id)
 
+    async def update_mp_preference(
+        self, order_id: int, preference_id: str
+    ) -> Order:
+        await self._db.execute(
+            update(OrderORM)
+            .where(OrderORM.id == order_id)
+            .values(mp_preference_id=preference_id)
+        )
+        return await self.get_by_id(order_id)
+
     async def get_by_mp_preference(self, preference_id: str) -> Optional[Order]:
         result = await self._db.execute(
             select(OrderORM)
@@ -307,7 +402,6 @@ class SQLUserRepository(UserRepository):
         return await self.get_by_id(user.id)
 
     async def add_points(self, user_id: int, points: int) -> None:
-        from sqlalchemy import text
         await self._db.execute(
             update(UserORM)
             .where(UserORM.id == user_id)

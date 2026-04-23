@@ -1,9 +1,7 @@
 from decimal import Decimal
 import math
 
-# Coordenadas del local de Yakero (Diaguitas 538, Las Condes)
-STORE_LAT = -33.4094
-STORE_LON = -70.5799
+from ....config import settings
 
 # Tabla de tarifas por tramo de distancia
 DELIVERY_TIERS = [
@@ -34,11 +32,11 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 class DeliveryFeeService:
     def __init__(
         self,
-        store_lat: float = STORE_LAT,
-        store_lon: float = STORE_LON,
+        store_lat: float | None = None,
+        store_lon: float | None = None,
     ):
-        self._lat = store_lat
-        self._lon = store_lon
+        self._lat = settings.store_lat if store_lat is None else store_lat
+        self._lon = settings.store_lon if store_lon is None else store_lon
 
     async def calculate(self, customer_lat: float, customer_lon: float) -> Decimal:
         distance = haversine_km(self._lat, self._lon, customer_lat, customer_lon)

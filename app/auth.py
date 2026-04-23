@@ -26,7 +26,10 @@ def create_access_token(user_id: int, role: str) -> str:
 
 def decode_token(token: str) -> dict:
     try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        if not payload.get("sub"):
+            raise JWTError("Missing subject")
+        return payload
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -41,7 +44,10 @@ async def get_current_user(
     if not credentials:
         raise HTTPException(status_code=401, detail="Token requerido.")
     payload = decode_token(credentials.credentials)
-    user_id = int(payload["sub"])
+    try:
+        user_id = int(payload["sub"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Token invÃ¡lido.")
     repo = SQLUserRepository(db)
     user = await repo.get_by_id(user_id)
     if not user or not user.is_active:

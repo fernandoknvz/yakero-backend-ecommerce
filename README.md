@@ -1,157 +1,89 @@
-# Yakero Ecommerce — Backend
+# Yakero Ecommerce Backend
 
-API REST construida con **FastAPI** + **SQLAlchemy (async)** + **MySQL**.  
-Arquitectura limpia: `domain` → `application` → `infrastructure`.
-
----
+Backend REST para ecommerce Yakero construido con FastAPI, SQLAlchemy async, MySQL y Alembic.
 
 ## Stack
 
-| Capa | Tecnología |
-|---|---|
-| Framework | FastAPI 0.115 |
-| ORM | SQLAlchemy 2 (async) |
-| Driver MySQL | asyncmy |
-| Migraciones | Alembic |
-| Auth | JWT (python-jose) + bcrypt |
-| Pagos | MercadoPago SDK |
-| Validación | Pydantic v2 |
+- FastAPI + Pydantic v2
+- SQLAlchemy 2 async + asyncmy
+- MySQL 8
+- Alembic
+- JWT con python-jose + passlib/bcrypt
+- MercadoPago SDK
 
----
+## Arquitectura
 
-## Levantar en desarrollo
+El proyecto sigue una separacion por capas:
+
+```text
+app/
+  domain/          Entidades, enums, excepciones e interfaces
+  application/     Casos de uso, DTOs y servicios de aplicacion
+  infrastructure/  API, base de datos, repositorios SQL y pagos
+  config.py        Settings centralizados
+  auth.py          JWT y dependencias de seguridad
+  main.py          FastAPI app, middlewares y routers
+```
+
+Convencion esperada para crecer:
+
+- `domain` no debe depender de FastAPI, SQLAlchemy ni SDKs externos.
+- `application` orquesta casos de uso y depende de interfaces del dominio.
+- `infrastructure` implementa detalles concretos: routers, ORM, repos SQL, pagos.
+- Nuevos modulos grandes como carrito, checkout y pagos deben entrar primero como casos de uso y contratos antes de exponer endpoints.
+
+## Arranque local
 
 ```bash
-# 1. Clonar y entrar al directorio
-git clone https://github.com/yakero/yakero-backend.git
-cd yakero-backend
-
-# 2. Crear entorno virtual
-python -m venv .venv && source .venv/bin/activate
-
-# 3. Instalar dependencias
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
-
-# 4. Configurar variables de entorno
-cp .env.example .env
-# Editar .env con tus credenciales reales
-
-# 5. Levantar base de datos (Docker)
-docker-compose up db -d
-
-# 6. Ejecutar migraciones
+copy .env.example .env
+docker compose up db -d
 alembic upgrade head
-
-# 7. (Opcional) Cargar schema base con categorías seed
-mysql -u yakero_user -p yakero_ecommerce < migrations/schema.sql
-
-# 8. Levantar API
 uvicorn app.main:app --reload
 ```
 
-Documentación interactiva disponible en: **http://localhost:8000/docs** (solo con `DEBUG=true`)
+La base Docker expone MySQL en `localhost:3310`. Si usas otro MySQL local, ajusta `DATABASE_URL`.
 
----
+## Variables importantes
 
-## Estructura de carpetas
-
-```
-app/
-├── domain/              # Entidades puras, interfaces de repositorio, excepciones
-│   ├── models/          # entities.py, enums.py
-│   ├── repositories/    # interfaces.py (contratos abstractos)
-│   └── exceptions.py
-├── application/         # Casos de uso, DTOs, servicios de dominio
-│   ├── use_cases/
-│   │   ├── auth/
-│   │   ├── orders/
-│   │   └── services/    # delivery_service.py, points_service.py
-│   └── dtos/            # schemas.py (Pydantic)
-├── infrastructure/      # Implementaciones concretas
-│   ├── database/
-│   │   ├── models/      # orm_models.py (SQLAlchemy)
-│   │   ├── repositories/ # sql_repositories.py
-│   │   └── session.py
-│   ├── api/
-│   │   └── routers/     # all_routers.py
-│   └── payment/         # mercadopago_service.py
-├── auth.py              # JWT helpers, dependencias FastAPI
-├── config.py            # Settings con pydantic-settings
-└── main.py              # FastAPI app + registro de routers
-```
-
----
+- `ENVIRONMENT`: `development`, `staging` o `production`.
+- `DEBUG`: habilita `/docs` y `/redoc` cuando es `true`.
+- `DATABASE_URL`: URL async de MySQL usando `mysql+asyncmy`.
+- `JWT_SECRET`: obligatorio fuerte para staging/produccion.
+- `ALLOWED_ORIGINS`: lista separada por comas o JSON array.
+- `MP_ACCESS_TOKEN`: requerido para crear preferencias reales de MercadoPago.
+- `STORE_LAT` / `STORE_LON`: origen para calculo de delivery.
 
 ## Endpoints principales
 
-### Autenticación
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/api/v1/auth/register` | Registro de usuario |
-| POST | `/api/v1/auth/login` | Login → JWT |
-| GET  | `/api/v1/auth/me` | Perfil del usuario autenticado |
+- `GET /health`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/categories/menu`
+- `GET /api/v1/products/`
+- `GET /api/v1/promotions/`
+- `POST /api/v1/orders/`
+- `GET /api/v1/orders/my`
+- `GET /api/v1/orders/{order_id}`
+- `POST /api/v1/delivery/fee`
+- `POST /api/v1/coupons/validate`
+- `POST /webhooks/mercadopago`
+- `GET /api/v1/internal/orders/pending`
+- `PATCH /api/v1/internal/orders/{order_id}/status`
 
-### Catálogo
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/api/v1/categories/menu` | Menú completo (categorías + productos + modificadores) |
-| GET | `/api/v1/products/` | Listado con filtros (`?category_id=`, `?q=`) |
-| GET | `/api/v1/promotions/` | Promociones activas con slots configurables |
+## Migraciones
 
-### Pedidos
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/api/v1/orders/` | Crear pedido (auth o guest) |
-| GET  | `/api/v1/orders/my` | Historial del usuario autenticado |
-| GET  | `/api/v1/orders/{id}` | Detalle de pedido |
+Alembic esta configurado para leer metadata desde `app.infrastructure.database.models.orm_models.Base`.
 
-### Utilidades
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/api/v1/delivery/fee` | Calcular costo de envío por coordenadas |
-| POST | `/api/v1/coupons/validate` | Validar cupón antes del checkout |
-
-### Webhooks
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| POST | `/webhooks/mercadopago` | Notificaciones de pago (idempotente) |
-
-### Integración POS (token `pos_service`)
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET   | `/api/v1/internal/orders/pending` | Pedidos pagados listos para preparación |
-| PATCH | `/api/v1/internal/orders/{id}/status` | Actualizar estado desde el POS |
-
----
-
-## Flujo de pago MercadoPago
-
-```
-Cliente → POST /orders → preferencia MP creada → redirect a MP
-         ↓
-    Cliente paga en MP
-         ↓
-    MP → POST /webhooks/mercadopago (con payment_id)
-         ↓
-    ConfirmPaymentUseCase (idempotente)
-         ↓
-    order.status = PAID
-         ↓
-    POS → GET /internal/orders/pending → imprime comanda
+```bash
+alembic revision --autogenerate -m "describe change"
+alembic upgrade head
 ```
 
----
-
-## Integración POS — Estrategia
-
-El POS (Django) se comunica con el ecommerce vía **API interna autenticada** con un token de tipo `pos_service`:
-
-1. El POS hace polling a `GET /internal/orders/pending` para obtener pedidos nuevos
-2. La respuesta incluye `items_by_station` agrupado por `ticket_tag` → impresión directa
-3. Al cambiar estado (listo/entregado), el POS llama `PATCH /internal/orders/{id}/status`
-4. El frontend del ecommerce puede hacer polling a `GET /orders/{id}` para mostrar seguimiento
-
----
+El archivo `migrations/schema.sql` se conserva como referencia historica/manual, pero la fuente profesional para evolucionar el esquema debe ser Alembic.
 
 ## Tests
 
@@ -159,13 +91,10 @@ El POS (Django) se comunica con el ecommerce vía **API interna autenticada** co
 pytest tests/ -v
 ```
 
----
+## Notas de hardening
 
-## Variables de entorno críticas
-
-Ver `.env.example`. Las más importantes:
-
-- `DATABASE_URL`: conexión MySQL con driver `asyncmy`
-- `JWT_SECRET`: generar con `openssl rand -hex 32`
-- `MP_ACCESS_TOKEN`: credencial de MercadoPago (producción o sandbox)
-- `STORE_LAT` / `STORE_LON`: coordenadas del local para cálculo de delivery
+- No usar `JWT_SECRET` de ejemplo fuera de desarrollo.
+- Mantener `DEBUG=false` en staging/produccion.
+- Configurar CORS con dominios explicitos.
+- El webhook de MercadoPago debe validarse con secreto real.
+- Evitar agregar logica ORM directa en routers nuevos; preferir repositorios y casos de uso.
