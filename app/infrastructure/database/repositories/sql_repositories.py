@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -201,7 +201,7 @@ class SQLPromotionRepository(PromotionRepository):
     ]
 
     async def get_all_active(self) -> list[Promotion]:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         result = await self._db.execute(
             select(PromotionORM)
             .where(
@@ -299,7 +299,7 @@ class SQLOrderRepository(OrderRepository):
 
     async def update_status(self, order_id: int, status: OrderStatus) -> Order:
         extra: dict = {}
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         if status == OrderStatus.PAID:
             extra["paid_at"] = now
         elif status == OrderStatus.READY:

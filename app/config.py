@@ -1,8 +1,9 @@
 from functools import lru_cache
 import json
+from urllib.parse import urlparse
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import model_validator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -77,6 +78,37 @@ class Settings(BaseSettings):
             "",
             "CHANGE_THIS_IN_PRODUCTION",
             "CAMBIA_ESTO_EN_PRODUCCION_CON_OPENSSL_RAND_HEX_32",
+        }
+
+    @model_validator(mode="after")
+    def validate_runtime_settings(self) -> "Settings":
+        if not self.api_v1_prefix.startswith("/"):
+            raise ValueError("API_V1_PREFIX debe comenzar con '/'.")
+        if self.api_v1_prefix != "/" and self.api_v1_prefix.endswith("/"):
+            raise ValueError("API_V1_PREFIX no debe terminar con '/'.")
+        if self.jwt_expire_minutes <= 0:
+            raise ValueError("JWT_EXPIRE_MINUTES debe ser mayor que 0.")
+        if not self.allowed_origins:
+            raise ValueError("ALLOWED_ORIGINS no puede estar vacio.")
+        if self.is_production:
+            if self.debug:
+                raise ValueError("DEBUG debe estar deshabilitado en produccion.")
+            if self.has_insecure_jwt_secret:
+                raise ValueError("JWT_SECRET inseguro para produccion.")
+            if "*" in self.allowed_origins:
+                raise ValueError("CORS wildcard no esta permitido en produccion.")
+        return self
+
+    def public_runtime_diagnostics(self) -> dict[str, Any]:
+        database = urlparse(self.database_url)
+        return {
+            "environment": self.environment,
+            "debug": self.debug,
+            "api_v1_prefix": self.api_v1_prefix,
+            "database_host": database.hostname,
+            "database_name": database.path.lstrip("/"),
+            "allowed_origins": self.allowed_origins,
+            "jwt_insecure": self.has_insecure_jwt_secret,
         }
 
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -106,7 +106,7 @@ class CreateOrderUseCase:
             mp_payment_status=None,
             notes=data.notes,
             items=items,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
             paid_at=None,
             ready_at=None,
             delivered_at=None,

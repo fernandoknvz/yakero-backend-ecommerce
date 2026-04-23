@@ -32,6 +32,17 @@ Convencion esperada para crecer:
 - `infrastructure` implementa detalles concretos: routers, ORM, repos SQL, pagos.
 - Nuevos modulos grandes como carrito, checkout y pagos deben entrar primero como casos de uso y contratos antes de exponer endpoints.
 
+Routers HTTP ya quedaron particionados por responsabilidad:
+
+- `api/routers/auth.py`
+- `api/routers/catalog.py`
+- `api/routers/orders.py`
+- `api/routers/users.py`
+- `api/routers/operations.py`
+- `api/routers/webhooks.py`
+- `api/routers/internal.py`
+- `api/routers/health.py`
+
 ## Arranque local
 
 ```bash
@@ -83,12 +94,18 @@ alembic revision --autogenerate -m "describe change"
 alembic upgrade head
 ```
 
-El archivo `migrations/schema.sql` se conserva como referencia historica/manual, pero la fuente profesional para evolucionar el esquema debe ser Alembic.
+Si tu base local ya fue creada previamente con `schema.sql` o con SQL manual y aun no tiene versionado Alembic, alinea la linea base una sola vez:
+
+```bash
+alembic stamp head
+```
+
+El archivo `migrations/schema.sql` se conserva solo como respaldo historico/manual. La fuente principal para evolucionar el esquema ahora es Alembic y la migracion inicial vive en `migrations/versions/20260423_0001_initial_schema.py`.
 
 ## Tests
 
 ```bash
-pytest tests/ -v
+pytest -q
 ```
 
 ## Notas de hardening

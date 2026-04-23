@@ -32,8 +32,11 @@ class GetOrderUseCase:
         order = await self._repo.get_by_id(order_id)
         if not order:
             raise NotFoundError("Pedido", order_id)
-        # Si hay user_id, verificar que el pedido le pertenezca
+        # Un usuario autenticado solo puede ver sus propios pedidos.
         if user_id and order.user_id and order.user_id != user_id:
+            raise NotFoundError("Pedido", order_id)
+        # Un invitado no debe poder consultar pedidos asociados a usuarios registrados.
+        if user_id is None and order.user_id is not None:
             raise NotFoundError("Pedido", order_id)
         return order
 

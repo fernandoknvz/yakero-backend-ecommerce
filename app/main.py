@@ -1,23 +1,35 @@
+from contextlib import asynccontextmanager
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .infrastructure.api.routers.all_routers import (
-    auth_router, products_router, categories_router,
-    promotions_router, orders_router, users_router,
-    delivery_router, coupons_router, webhooks_router, internal_router,
-)
 from .domain.exceptions import DomainError
 from .infrastructure.api.errors import domain_error_to_response
+from .infrastructure.api.routers import PUBLIC_ROUTERS, VERSIONED_ROUTERS
+
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    diagnostics = settings.public_runtime_diagnostics()
+    if diagnostics["jwt_insecure"] and not settings.is_production:
+        logger.warning("Running with insecure JWT secret outside production.")
+    logger.info("Starting Yakero backend with diagnostics: %s", diagnostics)
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
+    lifespan=lifespan,
 )
 
-# ── CORS ───────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -26,31 +38,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Global error handler ───────────────────────────────────────────────────────
+
 @app.exception_handler(DomainError)
-async def domain_error_handler(request: Request, exc: DomainError):
+async def domain_error_handler(_: Request, exc: DomainError):
     return domain_error_to_response(exc)
 
-# ── Routers ────────────────────────────────────────────────────────────────────
-PREFIX = settings.api_v1_prefix
 
-app.include_router(auth_router,       prefix=PREFIX)
-app.include_router(products_router,   prefix=PREFIX)
-app.include_router(categories_router, prefix=PREFIX)
-app.include_router(promotions_router, prefix=PREFIX)
-app.include_router(orders_router,     prefix=PREFIX)
-app.include_router(users_router,      prefix=PREFIX)
-app.include_router(delivery_router,   prefix=PREFIX)
-app.include_router(coupons_router,    prefix=PREFIX)
-app.include_router(webhooks_router,   prefix="")      # sin prefijo: /webhooks/mercadopago
-app.include_router(internal_router,   prefix=PREFIX)  # /api/v1/internal/...
+for router in VERSIONED_ROUTERS:
+    app.include_router(router, prefix=settings.api_v1_prefix)
 
-
-@app.get("/health")
-async def health():
-    return {
-        "status": "ok",
-        "service": settings.app_name,
-        "environment": settings.environment,
-        "version": app.version,
-    }
+for router in PUBLIC_ROUTERS:
+    app.include_router(router)

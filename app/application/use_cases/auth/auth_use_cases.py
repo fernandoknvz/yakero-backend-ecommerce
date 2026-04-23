@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from passlib.context import CryptContext
 from ....domain.models.entities import User
 from ....domain.models.enums import UserRole
@@ -29,7 +29,7 @@ class RegisterUserUseCase:
             is_active=True,
             is_guest=False,
             points_balance=0,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
         return await self._repo.create(user)
 
