@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     testing: bool = False
+    internal_bootstrap_token: str = ""
     api_base_url: str = "https://api.yakero.cl"
     api_v1_prefix: str = "/api/v1"
 

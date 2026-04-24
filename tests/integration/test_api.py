@@ -442,3 +442,73 @@ def test_webhook_invalid_signature(client, monkeypatch):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Firma de webhook invalida"
+
+
+def test_internal_bootstrap_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module.settings, "environment", "staging")
+
+    response = client.post("/api/v1/internal/bootstrap")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Token interno invalido."
+
+
+def test_internal_bootstrap_is_idempotent(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    state = {"calls": 0}
+
+    async def fake_run_alembic_upgrade():
+        return None
+
+    async def fake_run_seed_and_collect():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {
+                "created": {
+                    "categories": 8,
+                    "products": 8,
+                    "demo_user": True,
+                    "demo_coupon": True,
+                },
+                "existing": {
+                    "categories": 0,
+                    "products": 0,
+                    "demo_user": False,
+                    "demo_coupon": False,
+                },
+            }
+        return {
+            "created": {
+                "categories": 0,
+                "products": 0,
+                "demo_user": False,
+                "demo_coupon": False,
+            },
+            "existing": {
+                "categories": 8,
+                "products": 8,
+                "demo_user": True,
+                "demo_coupon": True,
+            },
+        }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module.settings, "environment", "staging")
+    monkeypatch.setattr(internal_router_module.settings, "debug", False)
+    monkeypatch.setattr(internal_router_module, "_run_alembic_upgrade", fake_run_alembic_upgrade)
+    monkeypatch.setattr(internal_router_module, "_run_seed_and_collect", fake_run_seed_and_collect)
+
+    first = client.post("/api/v1/internal/bootstrap", headers={"X-Internal-Token": "secret-token"})
+    second = client.post("/api/v1/internal/bootstrap", headers={"X-Internal-Token": "secret-token"})
+
+    assert first.status_code == 200
+    assert first.json()["migrations"] == "ok"
+    assert first.json()["seed"] == "ok"
+    assert first.json()["created"]["products"] == 8
+
+    assert second.status_code == 200
+    assert second.json()["created"]["products"] == 0
+    assert second.json()["existing"]["products"] == 8
