@@ -215,6 +215,7 @@ class OrderORM(Base):
     points_used = Column(Integer, default=0)
     total = Column(Numeric(10, 0), nullable=False)
 
+    payment_provider = Column(String(50))
     mp_preference_id = Column(String(255), index=True)
     mp_payment_id = Column(String(255), index=True)
     mp_payment_status = Column(String(50))

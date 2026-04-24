@@ -103,6 +103,7 @@ def _map_order(o) -> Order:
         payment_status=o.payment_status, subtotal=Decimal(o.subtotal),
         delivery_fee=Decimal(o.delivery_fee), discount=Decimal(o.discount),
         points_used=o.points_used, total=Decimal(o.total),
+        payment_provider=o.payment_provider,
         mp_preference_id=o.mp_preference_id, mp_payment_id=o.mp_payment_id,
         mp_payment_status=o.mp_payment_status, notes=o.notes,
         items=[_map_order_item(i) for i in o.items],
@@ -273,6 +274,7 @@ class SQLOrderRepository(OrderRepository):
             payment_status=order.payment_status, subtotal=order.subtotal,
             delivery_fee=order.delivery_fee, discount=order.discount,
             points_used=order.points_used, total=order.total,
+            payment_provider=order.payment_provider,
             notes=order.notes,
             delivery_address_snapshot=order.delivery_address_snapshot,
         )
@@ -320,22 +322,42 @@ class SQLOrderRepository(OrderRepository):
         return await self.get_by_id(order_id)
 
     async def update_payment(
-        self, order_id: int, mp_payment_id: str, mp_status: str
+        self,
+        order_id: int,
+        payment_provider: str,
+        payment_status: str,
+        mp_payment_id: str,
+        mp_status: str,
+        paid_at=None,
     ) -> Order:
         await self._db.execute(
             update(OrderORM)
             .where(OrderORM.id == order_id)
-            .values(mp_payment_id=mp_payment_id, mp_payment_status=mp_status)
+            .values(
+                payment_provider=payment_provider,
+                payment_status=payment_status,
+                mp_payment_id=mp_payment_id,
+                mp_payment_status=mp_status,
+                paid_at=paid_at,
+            )
         )
         return await self.get_by_id(order_id)
 
     async def update_mp_preference(
-        self, order_id: int, preference_id: str
+        self,
+        order_id: int,
+        preference_id: str,
+        payment_provider: str,
+        payment_status: str,
     ) -> Order:
         await self._db.execute(
             update(OrderORM)
             .where(OrderORM.id == order_id)
-            .values(mp_preference_id=preference_id)
+            .values(
+                payment_provider=payment_provider,
+                payment_status=payment_status,
+                mp_preference_id=preference_id,
+            )
         )
         return await self.get_by_id(order_id)
 

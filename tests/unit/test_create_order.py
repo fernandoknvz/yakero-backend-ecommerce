@@ -56,6 +56,7 @@ def saved_order() -> Order:
         status=OrderStatus.PENDING, payment_status=PaymentStatus.PENDING,
         subtotal=Decimal("4990"), delivery_fee=Decimal("0"),
         discount=Decimal("0"), points_used=0, total=Decimal("4990"),
+        payment_provider=None,
         mp_preference_id=None, mp_payment_id=None, mp_payment_status=None,
         notes=None, items=[],
     )
@@ -125,7 +126,7 @@ async def test_order_status_transitions():
         delivery_type=DeliveryType.PICKUP, status=OrderStatus.PENDING,
         payment_status=PaymentStatus.PENDING, subtotal=Decimal("0"),
         delivery_fee=Decimal("0"), discount=Decimal("0"), points_used=0,
-        total=Decimal("0"), mp_preference_id=None, mp_payment_id=None,
+        total=Decimal("0"), payment_provider=None, mp_preference_id=None, mp_payment_id=None,
         mp_payment_status=None, notes=None,
     )
     assert order.can_transition_to(OrderStatus.PAID) is True

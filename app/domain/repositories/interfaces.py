@@ -67,8 +67,19 @@ class OrderRepository(ABC):
     async def update_payment(
         self,
         order_id: int,
+        payment_provider: str,
+        payment_status: str,
         mp_payment_id: str,
         mp_status: str,
+        paid_at=None,
+    ) -> Order: ...
+    @abstractmethod
+    async def update_mp_preference(
+        self,
+        order_id: int,
+        preference_id: str,
+        payment_provider: str,
+        payment_status: str,
     ) -> Order: ...
     @abstractmethod
     async def get_by_mp_preference(self, preference_id: str) -> Optional[Order]: ...

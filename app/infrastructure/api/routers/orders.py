@@ -12,7 +12,6 @@ from ...database.repositories.sql_repositories import (
     SQLUserRepository,
 )
 from ...database.session import get_db
-from ...payment.mercadopago_service import MercadoPagoService
 from ..errors import domain_error_to_http
 from ....application.dtos.schemas import CreateOrderInput, OrderOut, OrderPreviewInput, OrderPreviewOut
 from ....application.use_cases.orders.create_order import CreateOrderUseCase
@@ -120,10 +119,6 @@ async def create_order(
             delivery_service=DeliveryFeeService(),
             points_service=PointsService(user_repo),
         ).execute(data, user_id=current_user.id if current_user else None)
-
-        pref_id = await MercadoPagoService().create_preference(order, back_urls={})
-        await order_repo.update_mp_preference(order.id, pref_id)
-        order.mp_preference_id = pref_id
         return order
     except DomainError as exc:
         raise domain_error_to_http(exc)

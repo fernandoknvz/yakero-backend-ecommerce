@@ -25,10 +25,13 @@ class Settings(BaseSettings):
 
     # MercadoPago
     mp_access_token: str = ""
+    mp_public_key: str = ""
+    mp_env: str = "sandbox"
     mp_webhook_secret: str = ""
     mp_back_url_success: str = "https://yakero.cl/checkout/success"
     mp_back_url_failure: str = "https://yakero.cl/checkout/failure"
     mp_back_url_pending: str = "https://yakero.cl/checkout/pending"
+    app_base_url: str = "http://localhost:5173"
 
     # Store location (para cálculo de delivery)
     store_lat: float = -33.4094

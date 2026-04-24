@@ -67,6 +67,7 @@ class CreateOrderUseCase:
             discount=pricing.discount,
             points_used=pricing.points_to_use,
             total=pricing.total,
+            payment_provider=None,
             mp_preference_id=None,
             mp_payment_id=None,
             mp_payment_status=None,

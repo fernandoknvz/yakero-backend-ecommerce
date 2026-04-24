@@ -1,9 +1,17 @@
 class DomainError(Exception):
     """Base para errores de dominio; no representan bugs, sino reglas violadas."""
 
-    def __init__(self, message: str, code: str = "DOMAIN_ERROR"):
+    def __init__(
+        self,
+        message: str,
+        code: str = "DOMAIN_ERROR",
+        status_code: int | None = None,
+        debug_detail: dict | None = None,
+    ):
         self.message = message
         self.code = code
+        self.status_code = status_code
+        self.debug_detail = debug_detail
         super().__init__(message)
 
 
@@ -81,5 +89,15 @@ class OrderPricingMismatchError(DomainError):
 
 
 class PaymentError(DomainError):
-    def __init__(self, message: str):
-        super().__init__(message, "PAYMENT_ERROR")
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 502,
+        debug_detail: dict | None = None,
+    ):
+        super().__init__(
+            message,
+            "PAYMENT_ERROR",
+            status_code=status_code,
+            debug_detail=debug_detail,
+        )

@@ -170,6 +170,7 @@ class Order:
     points_used: int
     total: Decimal
 
+    payment_provider: Optional[str]
     mp_preference_id: Optional[str]
     mp_payment_id: Optional[str]
     mp_payment_status: Optional[str]

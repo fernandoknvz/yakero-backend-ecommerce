@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
+from ...config import settings
 from ...domain.exceptions import DomainError
 
 
@@ -21,10 +22,15 @@ DOMAIN_ERROR_STATUS = {
 
 
 def domain_error_payload(exc: DomainError) -> dict[str, str]:
-    return {"code": exc.code, "message": exc.message}
+    payload = {"code": exc.code, "message": exc.message}
+    if settings.debug and getattr(exc, "debug_detail", None):
+        payload["debug"] = exc.debug_detail
+    return payload
 
 
 def domain_error_status_code(exc: DomainError) -> int:
+    if getattr(exc, "status_code", None):
+        return exc.status_code
     return DOMAIN_ERROR_STATUS.get(exc.code, 400)
 
 

@@ -345,6 +345,7 @@ class OrderOut(BaseModel):
     delivery_type: DeliveryType
     status: OrderStatus
     payment_status: PaymentStatus
+    payment_provider: Optional[str] = None
     subtotal: Decimal
     delivery_fee: Decimal
     discount: Decimal
@@ -356,8 +357,20 @@ class OrderOut(BaseModel):
     ready_at: Optional[datetime]
     delivered_at: Optional[datetime]
     mp_preference_id: Optional[str] = None
+    mp_payment_id: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class CreatePaymentPreferenceInput(BaseModel):
+    order_id: int = Field(ge=1)
+
+
+class CreatePaymentPreferenceOut(BaseModel):
+    preference_id: str
+    init_point: Optional[str] = None
+    sandbox_init_point: Optional[str] = None
+    order_id: int
 
 
 class PosStatusUpdateInput(BaseModel):

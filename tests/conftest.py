@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -355,19 +356,46 @@ class FakeOrderRepository:
 
     async def update_status(self, order_id: int, status: OrderStatus):
         order = self.orders[order_id]
-        updated = replace(order, status=status)
+        paid_at = datetime.now(UTC) if status == OrderStatus.PAID else order.paid_at
+        updated = replace(order, status=status, paid_at=paid_at)
         self.orders[order_id] = updated
         return updated
 
-    async def update_payment(self, order_id: int, mp_payment_id: str, mp_status: str):
+    async def update_payment(
+        self,
+        order_id: int,
+        payment_provider: str,
+        payment_status: str,
+        mp_payment_id: str,
+        mp_status: str,
+        paid_at=None,
+    ):
         order = self.orders[order_id]
-        updated = replace(order, mp_payment_id=mp_payment_id, mp_payment_status=mp_status)
+        updated = replace(
+            order,
+            payment_provider=payment_provider,
+            payment_status=PaymentStatus(payment_status),
+            mp_payment_id=mp_payment_id,
+            mp_payment_status=mp_status,
+            paid_at=paid_at or order.paid_at,
+        )
         self.orders[order_id] = updated
         return updated
 
-    async def update_mp_preference(self, order_id: int, preference_id: str):
+    async def update_mp_preference(
+        self,
+        order_id: int,
+        preference_id: str,
+        payment_provider: str,
+        payment_status: str,
+    ):
         order = self.orders[order_id]
-        updated = replace(order, mp_preference_id=preference_id)
+        updated = replace(
+            order,
+            payment_provider=payment_provider,
+            payment_status=PaymentStatus(payment_status),
+            mp_preference_id=preference_id,
+        )
         self.orders[order_id] = updated
         return updated
 
@@ -379,8 +407,43 @@ class FakeOrderRepository:
 
 
 class FakeMercadoPagoService:
+    def build_preference_payload(self, order: Order, back_urls: dict):
+        payload = {
+            "items": [
+                {
+                    "id": str(item.product_id or item.id or "item"),
+                    "title": item.product_name,
+                    "quantity": item.quantity,
+                    "unit_price": float(item.unit_price),
+                    "currency_id": "CLP",
+                }
+                for item in order.items
+            ],
+            "external_reference": str(order.id),
+            "notification_url": "https://api.test/api/v1/payments/webhook",
+            "back_urls": back_urls,
+            "auto_return": "approved",
+            "metadata": {"order_id": order.id, "environment": "sandbox"},
+        }
+        if order.guest_email:
+            payload["payer"] = {"email": order.guest_email}
+        return payload
+
     async def create_preference(self, _order: Order, back_urls: dict):
-        return "pref_test_123"
+        return SimpleNamespace(
+            preference_id="pref_test_123",
+            init_point="https://mp.test/init",
+            sandbox_init_point="https://mp.test/sandbox",
+        )
+
+    async def get_payment(self, payment_id: str):
+        return SimpleNamespace(
+            payment_id=payment_id,
+            status="approved",
+            external_reference="1",
+            preference_id="pref_test_123",
+            raw={"id": payment_id, "status": "approved", "external_reference": "1"},
+        )
 
     def verify_webhook_signature(self, _data: str, _signature: str):
         return False
@@ -394,6 +457,7 @@ def fake_app_dependencies(monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
     from app.infrastructure.api.routers import operations as operations_router_module
     from app.infrastructure.api.routers import orders as orders_router_module
+    from app.infrastructure.api.routers import payments as payments_router_module
     from app.infrastructure.api.routers import users as users_router_module
     from app.infrastructure.api.routers import webhooks as webhooks_router_module
     import app.auth as auth_module
@@ -410,7 +474,8 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(orders_router_module, "SQLAddressRepository", FakeAddressRepository)
     monkeypatch.setattr(orders_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(orders_router_module, "SQLPromotionRepository", FakePromotionRepository)
-    monkeypatch.setattr(orders_router_module, "MercadoPagoService", FakeMercadoPagoService)
+    monkeypatch.setattr(payments_router_module, "SQLOrderRepository", FakeOrderRepository)
+    monkeypatch.setattr(payments_router_module, "MercadoPagoService", FakeMercadoPagoService)
     monkeypatch.setattr(operations_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(catalog_router_module, "SQLCategoryRepository", FakeCategoryRepository)
     monkeypatch.setattr(catalog_router_module, "SQLProductRepository", FakeProductRepository)

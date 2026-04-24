@@ -3,6 +3,7 @@ from ....domain.models.enums import OrderStatus, PaymentStatus
 from ....domain.repositories.interfaces import OrderRepository
 from ....domain.exceptions import NotFoundError, InvalidOrderTransitionError
 from ...dtos.schemas import PosStatusUpdateInput
+from datetime import UTC, datetime
 
 
 class UpdateOrderStatusUseCase:
@@ -74,7 +75,12 @@ class ConfirmPaymentUseCase:
             return order
 
         updated = await self._repo.update_payment(
-            order.id, mp_payment_id, mp_status
+            order.id,
+            "mercadopago",
+            PaymentStatus.PAID.value if mp_status == "approved" else PaymentStatus.PENDING.value,
+            mp_payment_id,
+            mp_status,
+            paid_at=datetime.now(UTC) if mp_status == "approved" else None,
         )
 
         # Si el pago fue aprobado, transicionar a PAID → PREPARING automáticamente
