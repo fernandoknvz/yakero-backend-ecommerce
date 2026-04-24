@@ -108,6 +108,26 @@ El archivo `migrations/schema.sql` se conserva solo como respaldo historico/manu
 pytest -q
 ```
 
+## Datos demo locales
+
+Para inspeccionar el estado real del catalogo:
+
+```bash
+.\.venv\Scripts\python.exe scripts\inspect_catalog.py
+```
+
+Para cargar datos demo idempotentes solo en local/dev:
+
+```bash
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe scripts\seed_dev.py
+```
+
+Credenciales demo:
+
+- `feradmin@example.com`
+- `Admin123456`
+
 ## Notas de hardening
 
 - No usar `JWT_SECRET` de ejemplo fuera de desarrollo.

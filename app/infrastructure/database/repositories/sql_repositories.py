@@ -151,17 +151,22 @@ class SQLProductRepository(ProductRepository):
 
     async def get_by_slug(self, slug: str) -> Optional[Product]:
         result = await self._db.execute(
-            select(ProductORM).where(ProductORM.slug == slug)
+            select(ProductORM)
+            .where(ProductORM.slug == slug)
+            .options(*self._load_opts)
         )
         p = result.scalar_one_or_none()
         return _map_product(p) if p else None
 
     async def search(self, query: str) -> list[Product]:
         result = await self._db.execute(
-            select(ProductORM).where(
+            select(ProductORM)
+            .where(
                 ProductORM.name.ilike(f"%{query}%"),
                 ProductORM.is_available == True,
             )
+            .options(*self._load_opts)
+            .order_by(ProductORM.sort_order, ProductORM.name)
         )
         return [_map_product(p) for p in result.scalars().all()]
 

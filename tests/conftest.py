@@ -6,8 +6,25 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth import create_access_token
-from app.domain.models.entities import Coupon, Order, Product, User
-from app.domain.models.enums import DeliveryType, OrderStatus, PaymentStatus, TicketTag, UserRole
+from app.domain.models.entities import (
+    Address,
+    Category,
+    Coupon,
+    ModifierGroup,
+    ModifierOption,
+    Order,
+    Product,
+    Promotion,
+    User,
+)
+from app.domain.models.enums import (
+    DeliveryType,
+    ModifierType,
+    OrderStatus,
+    PaymentStatus,
+    TicketTag,
+    UserRole,
+)
 from app.infrastructure.database.session import get_db
 from app.main import app
 
@@ -28,21 +45,128 @@ def build_user(user_id: int = 1, email: str = "tester@yakero.cl") -> User:
     )
 
 
-def build_product() -> Product:
-    return Product(
-        id=1,
-        category_id=1,
-        sku="SKU-001",
-        name="Yakero Roll",
-        slug="yakero-roll",
-        description="Test product",
-        price=Decimal("4990"),
-        image_url=None,
-        ticket_tag=TicketTag.COCINA_SUSHI,
-        is_available=True,
-        sort_order=1,
-        modifier_groups=[],
+def build_demo_user() -> User:
+    return User(
+        id=2,
+        email="feradmin@example.com",
+        password_hash="hashed::Admin123456",
+        first_name="Fernando",
+        last_name="Admin",
+        phone="+56911112222",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_guest=False,
+        points_balance=0,
+        created_at=datetime.now(UTC),
     )
+
+
+def build_categories() -> list[Category]:
+    return [
+        Category(
+            id=1,
+            name="Rolls",
+            slug="rolls",
+            ticket_tag=TicketTag.COCINA_SUSHI,
+            image_url=None,
+            sort_order=1,
+            is_active=True,
+        ),
+        Category(
+            id=2,
+            name="Bebidas",
+            slug="bebidas",
+            ticket_tag=TicketTag.CAJA,
+            image_url=None,
+            sort_order=2,
+            is_active=True,
+        ),
+    ]
+
+
+def build_products() -> list[Product]:
+    protein_option = ModifierOption(
+        id=1,
+        group_id=1,
+        name="Salmon",
+        extra_price=Decimal("500"),
+        is_available=True,
+    )
+    sauce_option = ModifierOption(
+        id=2,
+        group_id=2,
+        name="Salsa teriyaki",
+        extra_price=Decimal("250"),
+        is_available=True,
+    )
+    return [
+        Product(
+            id=1,
+            category_id=1,
+            sku="SKU-001",
+            name="Yakero Roll",
+            slug="yakero-roll",
+            description="Roll premium",
+            price=Decimal("4990"),
+            image_url="https://img.test/yakero-roll.png",
+            ticket_tag=TicketTag.COCINA_SUSHI,
+            is_available=True,
+            sort_order=1,
+            modifier_groups=[
+                ModifierGroup(
+                    id=1,
+                    product_id=1,
+                    name="Proteina",
+                    modifier_type=ModifierType.SINGLE,
+                    min_selections=1,
+                    max_selections=1,
+                    is_required=True,
+                    options=[protein_option],
+                ),
+                ModifierGroup(
+                    id=2,
+                    product_id=1,
+                    name="Salsas",
+                    modifier_type=ModifierType.MULTIPLE,
+                    min_selections=0,
+                    max_selections=2,
+                    is_required=False,
+                    options=[sauce_option],
+                ),
+            ],
+        ),
+        Product(
+            id=2,
+            category_id=2,
+            sku="SKU-002",
+            name="Limonada",
+            slug="limonada",
+            description="Limonada natural",
+            price=Decimal("1990"),
+            image_url=None,
+            ticket_tag=TicketTag.CAJA,
+            is_available=True,
+            sort_order=2,
+            modifier_groups=[],
+        ),
+    ]
+
+
+def build_promotions() -> list[Promotion]:
+    return [
+        Promotion(
+            id=10,
+            name="Promo sushi night",
+            description="Combo nocturno",
+            promotion_type="bundle",
+            value=Decimal("8990"),
+            image_url=None,
+            is_active=True,
+            starts_at=None,
+            ends_at=None,
+            slots=[],
+        )
+    ]
 
 
 class FakeUserRepository:
@@ -56,9 +180,10 @@ class FakeUserRepository:
     @classmethod
     def reset(cls):
         user = build_user()
-        cls.users_by_id = {user.id: user}
-        cls.users_by_email = {user.email: user}
-        cls.next_id = 2
+        demo_user = build_demo_user()
+        cls.users_by_id = {user.id: user, demo_user.id: demo_user}
+        cls.users_by_email = {user.email: user, demo_user.email: demo_user}
+        cls.next_id = 3
 
     async def get_by_id(self, user_id: int):
         return self.users_by_id.get(user_id)
@@ -85,51 +210,79 @@ class FakeUserRepository:
         self.users_by_email[updated.email] = updated
 
 
-class FakeProductRepository:
+class FakeCategoryRepository:
     def __init__(self, _db):
-        self._product = build_product()
+        self._categories = build_categories()
 
     async def get_all_active(self):
-        return [self._product]
+        return self._categories
+
+    async def get_by_id(self, category_id: int):
+        return next((category for category in self._categories if category.id == category_id), None)
+
+
+class FakeProductRepository:
+    def __init__(self, _db):
+        self._products = build_products()
+
+    async def get_all_active(self):
+        return self._products
 
     async def get_by_id(self, product_id: int):
-        return self._product if product_id == self._product.id else None
+        return next((product for product in self._products if product.id == product_id), None)
 
-    async def get_by_category(self, _category_id: int):
-        return [self._product]
+    async def get_by_category(self, category_id: int):
+        return [product for product in self._products if product.category_id == category_id]
 
     async def get_by_slug(self, slug: str):
-        return self._product if slug == self._product.slug else None
+        return next((product for product in self._products if product.slug == slug), None)
 
     async def search(self, query: str):
-        return [self._product] if query.lower() in self._product.name.lower() else []
+        lowered = query.lower()
+        return [product for product in self._products if lowered in product.name.lower()]
 
 
 class FakePromotionRepository:
     def __init__(self, _db):
-        self._db = _db
+        self._promotions = build_promotions()
 
     async def get_all_active(self):
-        return []
+        return self._promotions
 
-    async def get_by_id(self, _promotion_id: int):
-        return None
+    async def get_by_id(self, promotion_id: int):
+        return next((promotion for promotion in self._promotions if promotion.id == promotion_id), None)
 
 
 class FakeAddressRepository:
     def __init__(self, _db):
         self._db = _db
+        self._addresses = {
+            1: Address(
+                id=1,
+                user_id=1,
+                label="Casa",
+                street="Av. Siempre Viva",
+                number="742",
+                commune="Providencia",
+                city="Santiago",
+                latitude=-33.44,
+                longitude=-70.65,
+                notes="Depto 12",
+                is_default=True,
+            )
+        }
 
-    async def get_by_user(self, _user_id: int):
-        return []
+    async def get_by_user(self, user_id: int):
+        return [address for address in self._addresses.values() if address.user_id == user_id]
 
-    async def get_by_id(self, _address_id: int):
-        return None
+    async def get_by_id(self, address_id: int):
+        return self._addresses.get(address_id)
 
     async def create(self, address):
-        return replace(address, id=1)
+        return replace(address, id=2)
 
     async def update(self, address):
+        self._addresses[address.id] = address
         return address
 
     async def delete(self, _address_id: int):
@@ -237,6 +390,7 @@ class FakeMercadoPagoService:
 def fake_app_dependencies(monkeypatch):
     from app.application.use_cases.auth import auth_use_cases as auth_use_cases_module
     from app.infrastructure.api.routers import auth as auth_router_module
+    from app.infrastructure.api.routers import catalog as catalog_router_module
     from app.infrastructure.api.routers import internal as internal_router_module
     from app.infrastructure.api.routers import operations as operations_router_module
     from app.infrastructure.api.routers import orders as orders_router_module
@@ -258,6 +412,9 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(orders_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(orders_router_module, "MercadoPagoService", FakeMercadoPagoService)
     monkeypatch.setattr(operations_router_module, "SQLCouponRepository", FakeCouponRepository)
+    monkeypatch.setattr(catalog_router_module, "SQLCategoryRepository", FakeCategoryRepository)
+    monkeypatch.setattr(catalog_router_module, "SQLProductRepository", FakeProductRepository)
+    monkeypatch.setattr(catalog_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(internal_router_module, "SQLOrderRepository", FakeOrderRepository)
     monkeypatch.setattr(webhooks_router_module, "SQLOrderRepository", FakeOrderRepository)
     monkeypatch.setattr(webhooks_router_module, "MercadoPagoService", FakeMercadoPagoService)

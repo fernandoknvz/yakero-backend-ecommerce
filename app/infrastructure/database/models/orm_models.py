@@ -23,6 +23,10 @@ class Base(DeclarativeBase):
     pass
 
 
+def enum_values(enum_cls):
+    return [member.value for member in enum_cls]
+
+
 class UserORM(Base):
     __tablename__ = "users"
 
@@ -32,7 +36,11 @@ class UserORM(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     phone = Column(String(30))
-    role = Column(SAEnum(UserRole), default=UserRole.CUSTOMER, nullable=False)
+    role = Column(
+        SAEnum(UserRole, values_callable=enum_values),
+        default=UserRole.CUSTOMER,
+        nullable=False,
+    )
     is_active = Column(Boolean, default=True)
     is_guest = Column(Boolean, default=False)
     points_balance = Column(Integer, default=0, nullable=False)
@@ -66,7 +74,7 @@ class CategoryORM(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     slug = Column(String(120), unique=True, nullable=False)
-    ticket_tag = Column(SAEnum(TicketTag), nullable=False)
+    ticket_tag = Column(SAEnum(TicketTag, values_callable=enum_values), nullable=False)
     image_url = Column(String(500))
     sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
@@ -85,7 +93,7 @@ class ProductORM(Base):
     description = Column(Text)
     price = Column(Numeric(10, 0), nullable=False)
     image_url = Column(String(500))
-    ticket_tag = Column(SAEnum(TicketTag), nullable=False)
+    ticket_tag = Column(SAEnum(TicketTag, values_callable=enum_values), nullable=False)
     is_available = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
 
@@ -102,7 +110,11 @@ class ModifierGroupORM(Base):
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
     promotion_slot_id = Column(Integer, ForeignKey("promotion_slots.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(100), nullable=False)
-    modifier_type = Column(SAEnum(ModifierType), default=ModifierType.SINGLE, nullable=False)
+    modifier_type = Column(
+        SAEnum(ModifierType, values_callable=enum_values),
+        default=ModifierType.SINGLE,
+        nullable=False,
+    )
     min_selections = Column(Integer, default=1)
     max_selections = Column(Integer, default=1)
     is_required = Column(Boolean, default=True)
@@ -151,7 +163,7 @@ class PromotionSlotORM(Base):
     promotion_id = Column(Integer, ForeignKey("promotions.id", ondelete="CASCADE"), nullable=False)
     slot_name = Column(String(200), nullable=False)
     pieces = Column(Integer, nullable=False)
-    ticket_tag = Column(SAEnum(TicketTag), nullable=False)
+    ticket_tag = Column(SAEnum(TicketTag, values_callable=enum_values), nullable=False)
 
     promotion = relationship("PromotionORM", back_populates="slots")
     modifier_groups = relationship(
@@ -182,9 +194,20 @@ class OrderORM(Base):
     guest_email = Column(String(255))
     guest_phone = Column(String(30))
     address_id = Column(Integer, ForeignKey("addresses.id"), nullable=True)
-    delivery_type = Column(SAEnum(DeliveryType), nullable=False)
-    status = Column(SAEnum(OrderStatus), default=OrderStatus.PENDING, nullable=False)
-    payment_status = Column(SAEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+    delivery_type = Column(
+        SAEnum(DeliveryType, values_callable=enum_values),
+        nullable=False,
+    )
+    status = Column(
+        SAEnum(OrderStatus, values_callable=enum_values),
+        default=OrderStatus.PENDING,
+        nullable=False,
+    )
+    payment_status = Column(
+        SAEnum(PaymentStatus, values_callable=enum_values),
+        default=PaymentStatus.PENDING,
+        nullable=False,
+    )
 
     subtotal = Column(Numeric(10, 0), nullable=False)
     delivery_fee = Column(Numeric(10, 0), default=0)
@@ -222,7 +245,7 @@ class OrderItemORM(Base):
     quantity = Column(Integer, default=1, nullable=False)
     unit_price = Column(Numeric(10, 0), nullable=False)
     total_price = Column(Numeric(10, 0), nullable=False)
-    ticket_tag = Column(SAEnum(TicketTag), nullable=False)
+    ticket_tag = Column(SAEnum(TicketTag, values_callable=enum_values), nullable=False)
     notes = Column(Text)
     config_json = Column(JSON)
 

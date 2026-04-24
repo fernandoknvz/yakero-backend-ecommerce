@@ -1,15 +1,20 @@
 from __future__ import annotations
-from decimal import Decimal
+
 from datetime import datetime
-from typing import Optional, Any
+from decimal import Decimal
+from typing import Any, Optional
+
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+
 from ...domain.models.enums import (
-    OrderStatus, PaymentStatus, DeliveryType, TicketTag,
-    UserRole, ModifierType,
+    DeliveryType,
+    ModifierType,
+    OrderStatus,
+    PaymentStatus,
+    TicketTag,
+    UserRole,
 )
 
-
-# ─── Auth ────────────────────────────────────────────────────────────────────
 
 class RegisterInput(BaseModel):
     email: EmailStr
@@ -20,10 +25,10 @@ class RegisterInput(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("La contraseña debe tener al menos 8 caracteres")
-        return v
+    def password_strength(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("La contrasena debe tener al menos 8 caracteres")
+        return value
 
 
 class LoginInput(BaseModel):
@@ -37,8 +42,6 @@ class TokenResponse(BaseModel):
     user_id: int
     role: UserRole
 
-
-# ─── Users ───────────────────────────────────────────────────────────────────
 
 class UserOut(BaseModel):
     id: int
@@ -58,8 +61,6 @@ class UserUpdateInput(BaseModel):
     last_name: Optional[str] = None
     phone: Optional[str] = None
 
-
-# ─── Address ─────────────────────────────────────────────────────────────────
 
 class AddressInput(BaseModel):
     label: str
@@ -88,7 +89,16 @@ class AddressOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── Products ────────────────────────────────────────────────────────────────
+class ProductCategoryRefOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    ticket_tag: TicketTag
+    image_url: Optional[str] = None
+    sort_order: int
+
+    model_config = {"from_attributes": True}
+
 
 class ModifierOptionOut(BaseModel):
     id: int
@@ -111,6 +121,13 @@ class ModifierGroupOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProductFlagsOut(BaseModel):
+    is_configurable: bool
+    has_required_modifiers: bool
+    has_optional_modifiers: bool
+    has_image: bool
+
+
 class ProductOut(BaseModel):
     id: int
     category_id: int
@@ -123,8 +140,30 @@ class ProductOut(BaseModel):
     ticket_tag: TicketTag
     is_available: bool
     modifier_groups: list[ModifierGroupOut]
+    category: Optional[ProductCategoryRefOut] = None
+    flags: Optional[ProductFlagsOut] = None
 
     model_config = {"from_attributes": True}
+
+
+class ProductListItemOut(BaseModel):
+    id: int
+    category_id: int
+    sku: Optional[str]
+    name: str
+    slug: str
+    description: Optional[str]
+    price: Decimal
+    image_url: Optional[str]
+    ticket_tag: TicketTag
+    is_available: bool
+    category: ProductCategoryRefOut
+    flags: ProductFlagsOut
+
+
+class ProductDetailOut(ProductListItemOut):
+    modifier_groups: list[ModifierGroupOut]
+    applicable_promotions: list["PromotionSummaryOut"] = Field(default_factory=list)
 
 
 class CategoryOut(BaseModel):
@@ -139,7 +178,14 @@ class CategoryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── Promotions ──────────────────────────────────────────────────────────────
+class CategorySummaryOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    ticket_tag: TicketTag
+    image_url: Optional[str]
+    sort_order: int
+
 
 class PromotionSlotOut(BaseModel):
     id: int
@@ -151,19 +197,20 @@ class PromotionSlotOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PromotionOut(BaseModel):
+class PromotionSummaryOut(BaseModel):
     id: int
     name: str
     description: Optional[str]
     promotion_type: str
     value: Decimal
     image_url: Optional[str]
+
+
+class PromotionOut(PromotionSummaryOut):
     slots: list[PromotionSlotOut]
 
     model_config = {"from_attributes": True}
 
-
-# ─── Coupons ─────────────────────────────────────────────────────────────────
 
 class CouponValidateInput(BaseModel):
     code: str
@@ -177,10 +224,15 @@ class CouponOut(BaseModel):
     calculated_discount: Decimal
 
 
-# ─── Orders ──────────────────────────────────────────────────────────────────
-
 class OrderItemModifierInput(BaseModel):
     modifier_option_id: int
+
+
+class ClientTotalsInput(BaseModel):
+    subtotal: Optional[Decimal] = None
+    delivery_fee: Optional[Decimal] = None
+    discount: Optional[Decimal] = None
+    total: Optional[Decimal] = None
 
 
 class OrderItemInput(BaseModel):
@@ -194,25 +246,77 @@ class OrderItemInput(BaseModel):
     @model_validator(mode="after")
     def product_or_promotion(self) -> "OrderItemInput":
         if not self.product_id and not self.promotion_id:
-            raise ValueError("Cada ítem debe tener product_id o promotion_id")
+            raise ValueError("Cada item debe tener product_id o promotion_id")
         return self
 
 
-class CreateOrderInput(BaseModel):
+class OrderPricingInput(BaseModel):
     delivery_type: DeliveryType
-    address_id: Optional[int] = None         # requerido si delivery
-    guest_email: Optional[EmailStr] = None   # requerido si guest
+    address_id: Optional[int] = None
+    guest_email: Optional[EmailStr] = None
     guest_phone: Optional[str] = None
     items: list[OrderItemInput] = Field(min_length=1)
-    notes: Optional[str] = None
     coupon_code: Optional[str] = None
     points_to_use: int = Field(default=0, ge=0)
+    client_totals: Optional[ClientTotalsInput] = None
 
     @model_validator(mode="after")
-    def validate_delivery_address(self) -> "CreateOrderInput":
+    def validate_delivery_address(self) -> "OrderPricingInput":
         if self.delivery_type == DeliveryType.DELIVERY and not self.address_id:
             raise ValueError("Se requiere address_id para delivery")
         return self
+
+
+class OrderPreviewInput(OrderPricingInput):
+    notes: Optional[str] = None
+
+
+class CreateOrderInput(OrderPricingInput):
+    notes: Optional[str] = None
+
+
+class SelectedModifierOut(BaseModel):
+    modifier_option_id: Optional[int]
+    option_name: str
+    group_name: str
+    extra_price: Decimal
+
+
+class PricingBreakdownOut(BaseModel):
+    coupon_discount: Decimal
+    points_discount: Decimal
+
+
+class OrderPreviewItemOut(BaseModel):
+    product_id: Optional[int]
+    promotion_id: Optional[int]
+    promotion_slot_id: Optional[int]
+    product_name: str
+    product_slug: Optional[str] = None
+    quantity: int
+    base_unit_price: Decimal
+    modifiers_total: Decimal
+    unit_price: Decimal
+    total_price: Decimal
+    ticket_tag: TicketTag
+    notes: Optional[str] = None
+    image_url: Optional[str] = None
+    selected_modifiers: list[SelectedModifierOut] = Field(default_factory=list)
+    config_json: Optional[dict[str, Any]] = None
+
+
+class OrderPreviewOut(BaseModel):
+    delivery_type: DeliveryType
+    address_id: Optional[int] = None
+    coupon_code: Optional[str] = None
+    points_to_use: int
+    items: list[OrderPreviewItemOut]
+    subtotal: Decimal
+    delivery_fee: Decimal
+    discount: Decimal
+    pricing: PricingBreakdownOut
+    total: Decimal
+    notes: Optional[str] = None
 
 
 class OrderItemModifierOut(BaseModel):
@@ -256,27 +360,21 @@ class OrderOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ─── POS Internal ────────────────────────────────────────────────────────────
-
 class PosStatusUpdateInput(BaseModel):
-    """Payload que el POS envía para actualizar estado de un pedido."""
     status: OrderStatus
-    pos_order_ref: Optional[str] = None  # referencia interna del POS
+    pos_order_ref: Optional[str] = None
 
 
 class PosOrderOut(BaseModel):
-    """Estructura enriquecida que el POS consume para generar comandas."""
     id: int
     status: OrderStatus
     delivery_type: DeliveryType
     created_at: datetime
     notes: Optional[str]
-    items_by_station: dict[str, list[OrderItemOut]]  # key = ticket_tag
+    items_by_station: dict[str, list[OrderItemOut]]
 
     model_config = {"from_attributes": True}
 
-
-# ─── Delivery fee ────────────────────────────────────────────────────────────
 
 class DeliveryFeeInput(BaseModel):
     latitude: float = Field(ge=-90, le=90)
@@ -287,3 +385,6 @@ class DeliveryFeeOut(BaseModel):
     distance_km: float
     fee: Decimal
     is_available: bool
+
+
+ProductDetailOut.model_rebuild()
