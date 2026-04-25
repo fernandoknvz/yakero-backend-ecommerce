@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,6 +71,36 @@ async def debug_payment_preference_payload(
         raise domain_error_to_http(exc)
 
 
+@router.get("/debug/mp-token")
+async def debug_mercadopago_token(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _ensure_internal_debug_allowed(x_internal_token)
+    token = settings.mp_access_token
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        async with httpx.AsyncClient(base_url="https://api.mercadopago.com", timeout=15.0) as client:
+            response = await client.get("/users/me", headers=headers)
+    except httpx.HTTPError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "status_code": None,
+                "response": {"error": str(exc)},
+                "token_prefix": _token_prefix(token),
+                "token_type": _token_type(token),
+            },
+        )
+
+    return {
+        "status_code": response.status_code,
+        "response": _parse_response_body(response),
+        "token_prefix": _token_prefix(token),
+        "token_type": _token_type(token),
+    }
+
+
 @router.post("/webhook")
 async def mercadopago_webhook(
     request: Request,
@@ -115,6 +146,32 @@ def _extract_payment_id(payload: dict, request: Request) -> Optional[str]:
         if candidate:
             return str(candidate)
     return None
+
+
+def _ensure_internal_debug_allowed(x_internal_token: str | None) -> None:
+    if not settings.internal_bootstrap_token:
+        raise HTTPException(status_code=503, detail="INTERNAL_BOOTSTRAP_TOKEN no configurado.")
+    if not x_internal_token or x_internal_token != settings.internal_bootstrap_token:
+        raise HTTPException(status_code=401, detail="Token interno invalido.")
+
+
+def _token_prefix(token: str) -> str:
+    return token[:8] if token else ""
+
+
+def _token_type(token: str) -> str:
+    if token.startswith("TEST-"):
+        return "TEST"
+    if token.startswith("APP_USR-"):
+        return "APP_USR"
+    return "UNKNOWN"
+
+
+def _parse_response_body(response: httpx.Response) -> Any:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
 
 
 def _verify_signature(service: MercadoPagoService, body: bytes, signature: str) -> bool:
