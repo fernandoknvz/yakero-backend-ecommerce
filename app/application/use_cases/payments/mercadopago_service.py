@@ -175,12 +175,14 @@ class MercadoPagoService:
     def _ensure_configured(self) -> None:
         if not self._access_token:
             raise PaymentError("MP_ACCESS_TOKEN no configurado.", status_code=500)
-        if settings.mp_env == "sandbox" and not self._access_token.startswith("TEST-"):
+        if settings.mp_env not in {"sandbox", "production"}:
             raise PaymentError(
-                "MP_ACCESS_TOKEN debe ser TEST en sandbox.",
+                "MP_ENV debe ser sandbox o production.",
                 status_code=500,
                 debug_detail={"mp_env": settings.mp_env},
             )
+        if settings.mp_env == "production" and self._access_token.startswith("TEST-"):
+            raise PaymentError("MP_ACCESS_TOKEN TEST no permitido en production.", status_code=500)
 
     def _validate_payload(self, payload: dict[str, Any]) -> None:
         notification_url = payload["notification_url"]
