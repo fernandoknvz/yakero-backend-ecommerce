@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     testing: bool = False
     internal_bootstrap_token: str = ""
     api_base_url: str = "https://api.yakero.cl"
+    backend_public_url: str = ""
     api_v1_prefix: str = "/api/v1"
 
     # Database (asyncmy driver for async SQLAlchemy)
@@ -33,6 +34,7 @@ class Settings(BaseSettings):
     mp_back_url_failure: str = "https://yakero.cl/checkout/failure"
     mp_back_url_pending: str = "https://yakero.cl/checkout/pending"
     app_base_url: str = "http://localhost:5173"
+    frontend_public_url: str = ""
 
     # Store location (para cálculo de delivery)
     store_lat: float = -33.4094
@@ -114,6 +116,14 @@ class Settings(BaseSettings):
             "allowed_origins": self.allowed_origins,
             "jwt_insecure": self.has_insecure_jwt_secret,
         }
+
+    @property
+    def resolved_backend_public_url(self) -> str:
+        return (self.backend_public_url or self.api_base_url).rstrip("/")
+
+    @property
+    def resolved_frontend_public_url(self) -> str:
+        return (self.frontend_public_url or self.app_base_url).rstrip("/")
 
 
 @lru_cache()

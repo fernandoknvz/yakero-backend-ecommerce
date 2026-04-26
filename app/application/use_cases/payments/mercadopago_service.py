@@ -12,7 +12,7 @@ import httpx
 
 from ....config import settings
 from ....domain.exceptions import PaymentError
-from ....domain.models.entities import Order
+from ....domain.models.entities import CheckoutSession, Order
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,7 @@ class MercadoPagoPayment:
     status: str
     external_reference: Optional[str]
     preference_id: Optional[str]
+    amount: Optional[Decimal]
     raw: dict[str, Any]
 
 
@@ -64,6 +65,27 @@ class MercadoPagoService:
             sandbox_init_point=response.get("sandbox_init_point"),
         )
 
+    async def create_checkout_preference(
+        self,
+        checkout_session: CheckoutSession,
+    ) -> MercadoPagoPreference:
+        self._ensure_configured()
+        payload = self.build_checkout_preference_payload(checkout_session)
+        if settings.debug:
+            logger.info("Mercado Pago checkout preference payload prepared: %s", self._safe_json(payload))
+        response = await self._request("POST", "/checkout/preferences", json=payload)
+        preference_id = response.get("id")
+        if not preference_id:
+            raise PaymentError(
+                "Mercado Pago no devolvio un preference_id valido.",
+                debug_detail={"response": response},
+            )
+        return MercadoPagoPreference(
+            preference_id=str(preference_id),
+            init_point=response.get("init_point"),
+            sandbox_init_point=response.get("sandbox_init_point"),
+        )
+
     async def get_payment(self, payment_id: str) -> MercadoPagoPayment:
         self._ensure_configured()
         response = await self._request("GET", f"/v1/payments/{payment_id}")
@@ -72,6 +94,7 @@ class MercadoPagoService:
             status=str(response.get("status") or ""),
             external_reference=response.get("external_reference"),
             preference_id=response.get("order", {}).get("id") or response.get("preference_id"),
+            amount=Decimal(str(response.get("transaction_amount"))) if response.get("transaction_amount") is not None else None,
             raw=response,
         )
 
@@ -91,6 +114,30 @@ class MercadoPagoService:
         payer_email = self._resolve_payer_email(order)
         if payer_email:
             payload["payer"] = {"email": payer_email}
+        self._validate_payload(payload)
+        return payload
+
+    def build_checkout_preference_payload(self, checkout_session: CheckoutSession) -> dict[str, Any]:
+        backend_url = settings.resolved_backend_public_url
+        frontend_url = settings.resolved_frontend_public_url
+        payload = {
+            "items": self._build_checkout_items(checkout_session),
+            "external_reference": checkout_session.external_reference,
+            "notification_url": f"{backend_url}{settings.api_v1_prefix}/payments/webhook",
+            "back_urls": {
+                "success": f"{frontend_url}/checkout/success?checkout_session_id={checkout_session.id}",
+                "failure": f"{frontend_url}/checkout/failure?checkout_session_id={checkout_session.id}",
+                "pending": f"{frontend_url}/checkout/pending?checkout_session_id={checkout_session.id}",
+            },
+            "auto_return": "approved",
+            "metadata": {
+                "checkout_session_id": checkout_session.id,
+                "environment": settings.mp_env,
+            },
+        }
+        payer_email = checkout_session.guest_email
+        if self._is_valid_email(payer_email):
+            payload["payer"] = {"email": payer_email.strip()}
         self._validate_payload(payload)
         return payload
 
@@ -167,6 +214,30 @@ class MercadoPagoService:
                     "title": "Costo de envio",
                     "quantity": 1,
                     "unit_price": float(order.delivery_fee),
+                    "currency_id": "CLP",
+                }
+            )
+        return items
+
+    def _build_checkout_items(self, checkout_session: CheckoutSession) -> list[dict[str, Any]]:
+        pricing = checkout_session.pricing_snapshot or {}
+        items = [
+            {
+                "id": str(item.get("product_id") or item.get("promotion_id") or "item"),
+                "title": str(item["product_name"]),
+                "quantity": int(item["quantity"]),
+                "unit_price": float(Decimal(str(item["unit_price"]))),
+                "currency_id": "CLP",
+            }
+            for item in pricing.get("items", [])
+        ]
+        if checkout_session.delivery_fee > 0:
+            items.append(
+                {
+                    "id": "delivery",
+                    "title": "Costo de envio",
+                    "quantity": 1,
+                    "unit_price": float(checkout_session.delivery_fee),
                     "currency_id": "CLP",
                 }
             )

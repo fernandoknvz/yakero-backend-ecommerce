@@ -4,8 +4,18 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...database.repositories.sql_repositories import SQLOrderRepository
+from ...database.repositories.sql_repositories import (
+    SQLAddressRepository,
+    SQLCheckoutSessionRepository,
+    SQLCouponRepository,
+    SQLOrderRepository,
+    SQLPaymentRepository,
+    SQLProductRepository,
+    SQLPromotionRepository,
+    SQLUserRepository,
+)
 from ...database.session import get_db
+from ....application.use_cases.services.delivery_service import DeliveryFeeService
 from ....application.use_cases.payments.mercadopago_service import MercadoPagoService
 from ....application.use_cases.payments.payment_use_cases import ProcessMercadoPagoWebhookUseCase
 from ....config import settings
@@ -45,6 +55,14 @@ async def mp_webhook(
     try:
         await ProcessMercadoPagoWebhookUseCase(
             order_repo=SQLOrderRepository(db),
+            checkout_repo=SQLCheckoutSessionRepository(db),
+            payment_repo=SQLPaymentRepository(db),
+            product_repo=SQLProductRepository(db),
+            promotion_repo=SQLPromotionRepository(db),
+            user_repo=SQLUserRepository(db),
+            address_repo=SQLAddressRepository(db),
+            coupon_repo=SQLCouponRepository(db),
+            delivery_service=DeliveryFeeService(),
             mp_service=MercadoPagoService(),
         ).execute(str(payment_id))
     except DomainError:

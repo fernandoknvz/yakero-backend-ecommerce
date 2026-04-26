@@ -8,17 +8,19 @@ from sqlalchemy.orm import selectinload
 from ....domain.models.entities import (
     Order, OrderItem, OrderItemModifier,
     Product, Category, ModifierGroup, ModifierOption,
-    Promotion, PromotionSlot, User, Address, Coupon,
+    Promotion, PromotionSlot, User, Address, Coupon, CheckoutSession, Payment,
 )
-from ....domain.models.enums import OrderStatus
+from ....domain.models.enums import DeliveryType, OrderStatus
 from ....domain.repositories.interfaces import (
     OrderRepository, ProductRepository, CategoryRepository,
     UserRepository, AddressRepository, PromotionRepository, CouponRepository,
+    CheckoutSessionRepository, PaymentRepository,
 )
 from ..models.orm_models import (
     OrderORM, OrderItemORM, OrderItemModifierORM,
     ProductORM, CategoryORM, UserORM, AddressORM,
     PromotionORM, PromotionSlotORM, ModifierGroupORM, CouponORM,
+    CheckoutSessionORM, PaymentORM,
 )
 
 
@@ -110,6 +112,56 @@ def _map_order(o) -> Order:
         created_at=o.created_at, paid_at=o.paid_at,
         ready_at=o.ready_at, delivered_at=o.delivered_at,
         delivery_address_snapshot=o.delivery_address_snapshot,
+    )
+
+
+def _map_checkout_session(s) -> CheckoutSession:
+    return CheckoutSession(
+        id=s.id,
+        session_token=s.session_token,
+        user_id=s.user_id,
+        guest_email=s.guest_email,
+        guest_phone=s.guest_phone,
+        address_id=s.address_id,
+        delivery_type=DeliveryType(s.delivery_type),
+        status=s.status,
+        payment_provider=s.payment_provider,
+        mp_preference_id=s.mp_preference_id,
+        mp_init_point=s.mp_init_point,
+        mp_sandbox_init_point=s.mp_sandbox_init_point,
+        cart_snapshot=s.cart_snapshot,
+        customer_data=s.customer_data,
+        pricing_snapshot=s.pricing_snapshot,
+        delivery_address_snapshot=s.delivery_address_snapshot,
+        coupon_code=s.coupon_code,
+        subtotal=Decimal(s.subtotal),
+        delivery_fee=Decimal(s.delivery_fee),
+        discount=Decimal(s.discount),
+        points_used=s.points_used,
+        total=Decimal(s.total),
+        created_order_id=s.created_order_id,
+        expires_at=s.expires_at,
+        created_at=s.created_at,
+        updated_at=s.updated_at,
+    )
+
+
+def _map_payment(p) -> Payment:
+    return Payment(
+        id=p.id,
+        checkout_session_id=p.checkout_session_id,
+        order_id=p.order_id,
+        provider=p.provider,
+        provider_payment_id=p.provider_payment_id,
+        provider_preference_id=p.provider_preference_id,
+        status=p.status,
+        provider_status=p.provider_status,
+        amount=Decimal(p.amount) if p.amount is not None else None,
+        currency=p.currency,
+        raw_payload=p.raw_payload,
+        approved_at=p.approved_at,
+        created_at=p.created_at,
+        updated_at=p.updated_at,
     )
 
 
@@ -369,6 +421,170 @@ class SQLOrderRepository(OrderRepository):
         )
         o = result.scalar_one_or_none()
         return _map_order(o) if o else None
+
+
+class SQLCheckoutSessionRepository(CheckoutSessionRepository):
+    def __init__(self, session: AsyncSession):
+        self._db = session
+
+    async def create(self, session: CheckoutSession) -> CheckoutSession:
+        now = datetime.now(UTC)
+        orm = CheckoutSessionORM(
+            session_token=session.session_token,
+            user_id=session.user_id,
+            guest_email=session.guest_email,
+            guest_phone=session.guest_phone,
+            address_id=session.address_id,
+            delivery_type=session.delivery_type.value,
+            status=session.status,
+            payment_provider=session.payment_provider,
+            mp_preference_id=session.mp_preference_id,
+            mp_init_point=session.mp_init_point,
+            mp_sandbox_init_point=session.mp_sandbox_init_point,
+            cart_snapshot=session.cart_snapshot,
+            customer_data=session.customer_data,
+            pricing_snapshot=session.pricing_snapshot,
+            delivery_address_snapshot=session.delivery_address_snapshot,
+            coupon_code=session.coupon_code,
+            subtotal=session.subtotal,
+            delivery_fee=session.delivery_fee,
+            discount=session.discount,
+            points_used=session.points_used,
+            total=session.total,
+            created_order_id=session.created_order_id,
+            expires_at=session.expires_at,
+            created_at=session.created_at or now,
+            updated_at=session.updated_at or now,
+        )
+        self._db.add(orm)
+        await self._db.flush()
+        return await self.get_by_id(orm.id)
+
+    async def get_by_id(self, session_id: int) -> Optional[CheckoutSession]:
+        result = await self._db.execute(
+            select(CheckoutSessionORM).where(CheckoutSessionORM.id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        return _map_checkout_session(session) if session else None
+
+    async def get_by_external_reference(self, external_reference: str) -> Optional[CheckoutSession]:
+        result = await self._db.execute(
+            select(CheckoutSessionORM).where(CheckoutSessionORM.session_token == external_reference)
+        )
+        session = result.scalar_one_or_none()
+        return _map_checkout_session(session) if session else None
+
+    async def update_preference(
+        self,
+        session_id: int,
+        preference_id: str,
+        init_point: Optional[str],
+        sandbox_init_point: Optional[str],
+    ) -> CheckoutSession:
+        await self._db.execute(
+            update(CheckoutSessionORM)
+            .where(CheckoutSessionORM.id == session_id)
+            .values(
+                mp_preference_id=preference_id,
+                mp_init_point=init_point,
+                mp_sandbox_init_point=sandbox_init_point,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        return await self.get_by_id(session_id)
+
+    async def update_status(
+        self,
+        session_id: int,
+        status: str,
+        created_order_id: Optional[int] = None,
+    ) -> CheckoutSession:
+        values = {
+            "status": status,
+            "updated_at": datetime.now(UTC),
+        }
+        if created_order_id is not None:
+            values["created_order_id"] = created_order_id
+        await self._db.execute(
+            update(CheckoutSessionORM)
+            .where(CheckoutSessionORM.id == session_id)
+            .values(**values)
+        )
+        return await self.get_by_id(session_id)
+
+
+class SQLPaymentRepository(PaymentRepository):
+    def __init__(self, session: AsyncSession):
+        self._db = session
+
+    async def get_by_provider_payment_id(self, provider: str, provider_payment_id: str) -> Optional[Payment]:
+        result = await self._db.execute(
+            select(PaymentORM).where(
+                PaymentORM.provider == provider,
+                PaymentORM.provider_payment_id == provider_payment_id,
+            )
+        )
+        payment = result.scalar_one_or_none()
+        return _map_payment(payment) if payment else None
+
+    async def get_by_checkout_session_id(self, checkout_session_id: int) -> list[Payment]:
+        result = await self._db.execute(
+            select(PaymentORM).where(PaymentORM.checkout_session_id == checkout_session_id)
+        )
+        return [_map_payment(payment) for payment in result.scalars().all()]
+
+    async def upsert(self, payment: Payment) -> Payment:
+        existing = None
+        if payment.provider_payment_id:
+            existing = await self.get_by_provider_payment_id(payment.provider, payment.provider_payment_id)
+
+        now = datetime.now(UTC)
+        if existing:
+            await self._db.execute(
+                update(PaymentORM)
+                .where(PaymentORM.id == existing.id)
+                .values(
+                    checkout_session_id=payment.checkout_session_id or existing.checkout_session_id,
+                    order_id=payment.order_id or existing.order_id,
+                    provider_preference_id=payment.provider_preference_id,
+                    status=payment.status,
+                    provider_status=payment.provider_status,
+                    amount=payment.amount,
+                    currency=payment.currency,
+                    raw_payload=payment.raw_payload,
+                    approved_at=payment.approved_at or existing.approved_at,
+                    updated_at=now,
+                )
+            )
+            return await self.get_by_provider_payment_id(payment.provider, payment.provider_payment_id)
+
+        orm = PaymentORM(
+            checkout_session_id=payment.checkout_session_id,
+            order_id=payment.order_id,
+            provider=payment.provider,
+            provider_payment_id=payment.provider_payment_id,
+            provider_preference_id=payment.provider_preference_id,
+            status=payment.status,
+            provider_status=payment.provider_status,
+            amount=payment.amount,
+            currency=payment.currency,
+            raw_payload=payment.raw_payload,
+            approved_at=payment.approved_at,
+            created_at=payment.created_at or now,
+            updated_at=payment.updated_at or now,
+        )
+        self._db.add(orm)
+        await self._db.flush()
+        return _map_payment(orm)
+
+    async def attach_order(self, payment_id: int, order_id: int) -> Payment:
+        await self._db.execute(
+            update(PaymentORM)
+            .where(PaymentORM.id == payment_id)
+            .values(order_id=order_id, updated_at=datetime.now(UTC))
+        )
+        result = await self._db.execute(select(PaymentORM).where(PaymentORM.id == payment_id))
+        return _map_payment(result.scalar_one())
 
 
 # ─── User Repository ──────────────────────────────────────────────────────────

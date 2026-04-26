@@ -363,14 +363,27 @@ class OrderOut(BaseModel):
 
 
 class CreatePaymentPreferenceInput(BaseModel):
-    order_id: int = Field(ge=1)
+    # Legacy compatibility: old clients may still send order_id after POST /orders/.
+    order_id: Optional[int] = Field(default=None, ge=1)
+    delivery_type: Optional[DeliveryType] = None
+    address_id: Optional[int] = None
+    guest_email: Optional[EmailStr] = None
+    guest_phone: Optional[str] = None
+    items: list[OrderItemInput] = Field(default_factory=list)
+    coupon_code: Optional[str] = None
+    points_to_use: int = Field(default=0, ge=0)
+    client_totals: Optional[ClientTotalsInput] = None
+    notes: Optional[str] = None
+    customer_data: Optional[dict[str, Any]] = None
 
 
 class CreatePaymentPreferenceOut(BaseModel):
     preference_id: str
     init_point: Optional[str] = None
     sandbox_init_point: Optional[str] = None
-    order_id: int
+    checkout_session_id: Optional[int] = None
+    external_reference: Optional[str] = None
+    order_id: Optional[int] = None
 
 
 class PosStatusUpdateInput(BaseModel):

@@ -203,6 +203,125 @@ def test_create_payment_preference_with_valid_order(client):
     assert payload["sandbox_init_point"] == "https://mp.test/sandbox"
 
 
+def test_create_payment_preference_from_cart_does_not_create_order(client):
+    response = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+            "customer_data": {"name": "Invitado"},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["order_id"] is None
+    assert payload["checkout_session_id"] == 1
+    assert payload["external_reference"]
+
+    order = client.get("/api/v1/orders/1")
+    assert order.status_code == 404
+
+
+def test_webhook_approved_creates_order_once_from_checkout_session(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    assert preference.status_code == 200
+
+    first = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_approved_checkout_1"}},
+    )
+    second = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_approved_checkout_1"}},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    order = client.get("/api/v1/orders/1")
+    assert order.status_code == 200
+    payload = order.json()
+    assert payload["payment_status"] == "pagado"
+    assert payload["mp_payment_id"] == "pay_approved_checkout_1"
+
+    missing_second_order = client.get("/api/v1/orders/2")
+    assert missing_second_order.status_code == 404
+
+
+def test_webhook_rejected_saves_payment_without_creating_order(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    assert preference.status_code == 200
+
+    response = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_rejected_checkout_1"}},
+    )
+
+    assert response.status_code == 200
+    order = client.get("/api/v1/orders/1")
+    assert order.status_code == 404
+
+
+def test_webhook_duplicate_does_not_duplicate_order(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    assert preference.status_code == 200
+
+    for _ in range(2):
+        response = client.post(
+            "/api/v1/payments/webhook",
+            json={"type": "payment", "data": {"id": "pay_approved_duplicate_1"}},
+        )
+        assert response.status_code == 200
+
+    assert client.get("/api/v1/orders/1").status_code == 200
+    assert client.get("/api/v1/orders/2").status_code == 404
+
+
 def test_debug_preference_payload_available_in_debug(client, monkeypatch):
     from app.infrastructure.api.routers import payments as payments_router_module
 

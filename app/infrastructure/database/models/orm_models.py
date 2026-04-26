@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Numeric,
     ForeignKey, Text, Float, JSON, Enum as SAEnum, MetaData,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship, DeclarativeBase
 from ....domain.models.enums import (
@@ -232,6 +233,59 @@ class OrderORM(Base):
     items = relationship(
         "OrderItemORM", back_populates="order", cascade="all, delete-orphan"
     )
+
+
+class CheckoutSessionORM(Base):
+    __tablename__ = "checkout_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_token = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_email = Column(String(255))
+    guest_phone = Column(String(30))
+    address_id = Column(Integer, nullable=True)
+    delivery_type = Column(String(20), nullable=False)
+    status = Column(String(30), default="pending", nullable=False, index=True)
+    payment_provider = Column(String(50), default="mercadopago", nullable=False)
+    mp_preference_id = Column(String(255), index=True)
+    mp_init_point = Column(Text)
+    mp_sandbox_init_point = Column(Text)
+    cart_snapshot = Column(JSON, nullable=False)
+    customer_data = Column(JSON)
+    pricing_snapshot = Column(JSON)
+    delivery_address_snapshot = Column(JSON)
+    coupon_code = Column(String(50))
+    subtotal = Column(Numeric(10, 0), nullable=False)
+    delivery_fee = Column(Numeric(10, 0), default=0, nullable=False)
+    discount = Column(Numeric(10, 0), default=0, nullable=False)
+    points_used = Column(Integer, default=0, nullable=False)
+    total = Column(Numeric(10, 0), nullable=False)
+    created_order_id = Column(Integer, nullable=True, index=True)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class PaymentORM(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_payment_id", name="uq_payments_provider_provider_payment_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    checkout_session_id = Column(Integer, nullable=True, index=True)
+    order_id = Column(Integer, nullable=True, index=True)
+    provider = Column(String(50), nullable=False)
+    provider_payment_id = Column(String(255))
+    provider_preference_id = Column(String(255), index=True)
+    status = Column(String(50), nullable=False, index=True)
+    provider_status = Column(String(50))
+    amount = Column(Numeric(10, 0))
+    currency = Column(String(3), default="CLP", nullable=False)
+    raw_payload = Column(JSON)
+    approved_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class OrderItemORM(Base):

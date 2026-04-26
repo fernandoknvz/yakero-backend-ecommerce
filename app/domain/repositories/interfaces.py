@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional
-from ..models.entities import User, Address, Product, Category, Order, Promotion, Coupon
+from ..models.entities import User, Address, Product, Category, Order, Promotion, Coupon, CheckoutSession, Payment
 from ..models.enums import OrderStatus
 
 
@@ -83,6 +83,41 @@ class OrderRepository(ABC):
     ) -> Order: ...
     @abstractmethod
     async def get_by_mp_preference(self, preference_id: str) -> Optional[Order]: ...
+
+
+class CheckoutSessionRepository(ABC):
+    @abstractmethod
+    async def create(self, session: CheckoutSession) -> CheckoutSession: ...
+    @abstractmethod
+    async def get_by_id(self, session_id: int) -> Optional[CheckoutSession]: ...
+    @abstractmethod
+    async def get_by_external_reference(self, external_reference: str) -> Optional[CheckoutSession]: ...
+    @abstractmethod
+    async def update_preference(
+        self,
+        session_id: int,
+        preference_id: str,
+        init_point: Optional[str],
+        sandbox_init_point: Optional[str],
+    ) -> CheckoutSession: ...
+    @abstractmethod
+    async def update_status(
+        self,
+        session_id: int,
+        status: str,
+        created_order_id: Optional[int] = None,
+    ) -> CheckoutSession: ...
+
+
+class PaymentRepository(ABC):
+    @abstractmethod
+    async def get_by_provider_payment_id(self, provider: str, provider_payment_id: str) -> Optional[Payment]: ...
+    @abstractmethod
+    async def get_by_checkout_session_id(self, checkout_session_id: int) -> list[Payment]: ...
+    @abstractmethod
+    async def upsert(self, payment: Payment) -> Payment: ...
+    @abstractmethod
+    async def attach_order(self, payment_id: int, order_id: int) -> Payment: ...
 
 
 class PromotionRepository(ABC):

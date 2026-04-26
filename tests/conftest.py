@@ -10,10 +10,12 @@ from app.auth import create_access_token
 from app.domain.models.entities import (
     Address,
     Category,
+    CheckoutSession,
     Coupon,
     ModifierGroup,
     ModifierOption,
     Order,
+    Payment,
     Product,
     Promotion,
     User,
@@ -406,6 +408,121 @@ class FakeOrderRepository:
         return None
 
 
+class FakeCheckoutSessionRepository:
+    sessions: dict[int, CheckoutSession] = {}
+    next_id = 1
+
+    def __init__(self, _db):
+        self._db = _db
+
+    @classmethod
+    def reset(cls):
+        cls.sessions = {}
+        cls.next_id = 1
+
+    async def create(self, session: CheckoutSession):
+        created = replace(
+            session,
+            id=self.next_id,
+            created_at=session.created_at or datetime.now(UTC),
+            updated_at=session.updated_at or datetime.now(UTC),
+        )
+        self.sessions[created.id] = created
+        self.next_id += 1
+        return created
+
+    async def get_by_id(self, session_id: int):
+        return self.sessions.get(session_id)
+
+    async def get_by_external_reference(self, external_reference: str):
+        for session in self.sessions.values():
+            if session.external_reference == external_reference:
+                return session
+        return None
+
+    async def update_preference(self, session_id: int, preference_id: str, init_point: str | None, sandbox_init_point: str | None):
+        session = self.sessions[session_id]
+        updated = replace(
+            session,
+            mp_preference_id=preference_id,
+            mp_init_point=init_point,
+            mp_sandbox_init_point=sandbox_init_point,
+            updated_at=datetime.now(UTC),
+        )
+        self.sessions[session_id] = updated
+        return updated
+
+    async def update_status(self, session_id: int, status: str, created_order_id: int | None = None):
+        session = self.sessions[session_id]
+        updated = replace(
+            session,
+            status=status,
+            created_order_id=created_order_id if created_order_id is not None else session.created_order_id,
+            updated_at=datetime.now(UTC),
+        )
+        self.sessions[session_id] = updated
+        return updated
+
+
+class FakePaymentRepository:
+    payments: dict[int, Payment] = {}
+    next_id = 1
+
+    def __init__(self, _db):
+        self._db = _db
+
+    @classmethod
+    def reset(cls):
+        cls.payments = {}
+        cls.next_id = 1
+
+    async def get_by_provider_payment_id(self, provider: str, provider_payment_id: str):
+        for payment in self.payments.values():
+            if payment.provider == provider and payment.provider_payment_id == provider_payment_id:
+                return payment
+        return None
+
+    async def get_by_checkout_session_id(self, checkout_session_id: int):
+        return [payment for payment in self.payments.values() if payment.checkout_session_id == checkout_session_id]
+
+    async def upsert(self, payment: Payment):
+        existing = None
+        if payment.provider_payment_id:
+            existing = await self.get_by_provider_payment_id(payment.provider, payment.provider_payment_id)
+        if existing:
+            updated = replace(
+                existing,
+                checkout_session_id=payment.checkout_session_id or existing.checkout_session_id,
+                order_id=payment.order_id or existing.order_id,
+                provider_preference_id=payment.provider_preference_id,
+                status=payment.status,
+                provider_status=payment.provider_status,
+                amount=payment.amount,
+                currency=payment.currency,
+                raw_payload=payment.raw_payload,
+                approved_at=payment.approved_at or existing.approved_at,
+                updated_at=datetime.now(UTC),
+            )
+            self.payments[existing.id] = updated
+            return updated
+
+        created = replace(
+            payment,
+            id=self.next_id,
+            created_at=payment.created_at or datetime.now(UTC),
+            updated_at=payment.updated_at or datetime.now(UTC),
+        )
+        self.payments[created.id] = created
+        self.next_id += 1
+        return created
+
+    async def attach_order(self, payment_id: int, order_id: int):
+        payment = self.payments[payment_id]
+        updated = replace(payment, order_id=order_id, updated_at=datetime.now(UTC))
+        self.payments[payment_id] = updated
+        return updated
+
+
 class FakeMercadoPagoService:
     def build_preference_payload(self, order: Order, back_urls: dict):
         payload = {
@@ -436,13 +553,57 @@ class FakeMercadoPagoService:
             sandbox_init_point="https://mp.test/sandbox",
         )
 
+    def build_checkout_preference_payload(self, checkout_session: CheckoutSession):
+        payload = {
+            "items": [
+                {
+                    "id": str(item.get("product_id") or item.get("promotion_id") or "item"),
+                    "title": item["product_name"],
+                    "quantity": item["quantity"],
+                    "unit_price": float(item["unit_price"]),
+                    "currency_id": "CLP",
+                }
+                for item in checkout_session.pricing_snapshot["items"]
+            ],
+            "external_reference": checkout_session.external_reference,
+            "notification_url": "https://api.test/api/v1/payments/webhook",
+            "back_urls": {
+                "success": f"https://front.test/checkout/success?checkout_session_id={checkout_session.id}",
+                "failure": f"https://front.test/checkout/failure?checkout_session_id={checkout_session.id}",
+                "pending": f"https://front.test/checkout/pending?checkout_session_id={checkout_session.id}",
+            },
+            "auto_return": "approved",
+            "metadata": {"checkout_session_id": checkout_session.id, "environment": "sandbox"},
+        }
+        if checkout_session.guest_email:
+            payload["payer"] = {"email": checkout_session.guest_email}
+        return payload
+
+    async def create_checkout_preference(self, checkout_session: CheckoutSession):
+        return SimpleNamespace(
+            preference_id=f"pref_session_{checkout_session.id}",
+            init_point="https://mp.test/init",
+            sandbox_init_point="https://mp.test/sandbox",
+        )
+
     async def get_payment(self, payment_id: str):
+        status = "rejected" if "rejected" in payment_id else "approved"
+        session = next(iter(FakeCheckoutSessionRepository.sessions.values()), None)
+        external_reference = session.external_reference if session else "1"
+        preference_id = session.mp_preference_id if session else "pref_test_123"
         return SimpleNamespace(
             payment_id=payment_id,
-            status="approved",
-            external_reference="1",
-            preference_id="pref_test_123",
-            raw={"id": payment_id, "status": "approved", "external_reference": "1"},
+            status=status,
+            external_reference=external_reference,
+            preference_id=preference_id,
+            amount=Decimal("5490"),
+            raw={
+                "id": payment_id,
+                "status": status,
+                "external_reference": external_reference,
+                "metadata": {"checkout_session_id": session.id if session else None},
+                "transaction_amount": 5490,
+            },
         )
 
     def verify_webhook_signature(self, _data: str, _signature: str):
@@ -464,6 +625,8 @@ def fake_app_dependencies(monkeypatch):
 
     FakeUserRepository.reset()
     FakeOrderRepository.reset()
+    FakeCheckoutSessionRepository.reset()
+    FakePaymentRepository.reset()
 
     monkeypatch.setattr(auth_router_module, "SQLUserRepository", FakeUserRepository)
     monkeypatch.setattr(users_router_module, "SQLUserRepository", FakeUserRepository)
@@ -475,6 +638,13 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(orders_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(orders_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(payments_router_module, "SQLOrderRepository", FakeOrderRepository)
+    monkeypatch.setattr(payments_router_module, "SQLCheckoutSessionRepository", FakeCheckoutSessionRepository)
+    monkeypatch.setattr(payments_router_module, "SQLPaymentRepository", FakePaymentRepository)
+    monkeypatch.setattr(payments_router_module, "SQLUserRepository", FakeUserRepository)
+    monkeypatch.setattr(payments_router_module, "SQLProductRepository", FakeProductRepository)
+    monkeypatch.setattr(payments_router_module, "SQLAddressRepository", FakeAddressRepository)
+    monkeypatch.setattr(payments_router_module, "SQLCouponRepository", FakeCouponRepository)
+    monkeypatch.setattr(payments_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(payments_router_module, "MercadoPagoService", FakeMercadoPagoService)
     monkeypatch.setattr(operations_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(catalog_router_module, "SQLCategoryRepository", FakeCategoryRepository)
@@ -482,6 +652,13 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(catalog_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(internal_router_module, "SQLOrderRepository", FakeOrderRepository)
     monkeypatch.setattr(webhooks_router_module, "SQLOrderRepository", FakeOrderRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLCheckoutSessionRepository", FakeCheckoutSessionRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLPaymentRepository", FakePaymentRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLUserRepository", FakeUserRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLProductRepository", FakeProductRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLAddressRepository", FakeAddressRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLCouponRepository", FakeCouponRepository)
+    monkeypatch.setattr(webhooks_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(webhooks_router_module, "MercadoPagoService", FakeMercadoPagoService)
     monkeypatch.setattr(auth_module, "SQLUserRepository", FakeUserRepository)
     monkeypatch.setattr(auth_use_cases_module.pwd_context, "hash", lambda secret: f"hashed::{secret}")

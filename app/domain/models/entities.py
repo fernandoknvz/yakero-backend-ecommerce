@@ -205,3 +205,55 @@ class Order:
         for item in self.items:
             result.setdefault(item.ticket_tag, []).append(item)
         return result
+
+
+@dataclass
+class CheckoutSession:
+    id: Optional[int]
+    session_token: str
+    user_id: Optional[int]
+    guest_email: Optional[str]
+    guest_phone: Optional[str]
+    address_id: Optional[int]
+    delivery_type: DeliveryType
+    status: str
+    payment_provider: str
+    mp_preference_id: Optional[str]
+    mp_init_point: Optional[str]
+    mp_sandbox_init_point: Optional[str]
+    cart_snapshot: dict
+    customer_data: Optional[dict]
+    pricing_snapshot: Optional[dict]
+    delivery_address_snapshot: Optional[dict]
+    coupon_code: Optional[str]
+    subtotal: Decimal
+    delivery_fee: Decimal
+    discount: Decimal
+    points_used: int
+    total: Decimal
+    created_order_id: Optional[int]
+    expires_at: Optional[datetime]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    @property
+    def external_reference(self) -> str:
+        return self.session_token
+
+
+@dataclass
+class Payment:
+    id: Optional[int]
+    checkout_session_id: Optional[int]
+    order_id: Optional[int]
+    provider: str
+    provider_payment_id: Optional[str]
+    provider_preference_id: Optional[str]
+    status: str
+    provider_status: Optional[str]
+    amount: Optional[Decimal]
+    currency: str
+    raw_payload: Optional[dict]
+    approved_at: Optional[datetime]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None

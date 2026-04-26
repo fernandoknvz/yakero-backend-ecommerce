@@ -5,13 +5,23 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...database.repositories.sql_repositories import SQLOrderRepository
+from ...database.repositories.sql_repositories import (
+    SQLAddressRepository,
+    SQLCheckoutSessionRepository,
+    SQLCouponRepository,
+    SQLOrderRepository,
+    SQLPaymentRepository,
+    SQLProductRepository,
+    SQLPromotionRepository,
+    SQLUserRepository,
+)
 from ...database.session import get_db
 from ..errors import domain_error_to_http
 from ....application.dtos.schemas import (
     CreatePaymentPreferenceInput,
     CreatePaymentPreferenceOut,
 )
+from ....application.use_cases.services.delivery_service import DeliveryFeeService
 from ....application.use_cases.payments.mercadopago_service import MercadoPagoService
 from ....application.use_cases.payments.payment_use_cases import (
     CreatePaymentPreferenceUseCase,
@@ -33,18 +43,28 @@ async def create_payment_preference(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     try:
-        order, preference = await CreatePaymentPreferenceUseCase(
+        checkout_session, preference, order = await CreatePaymentPreferenceUseCase(
             order_repo=SQLOrderRepository(db),
+            checkout_repo=SQLCheckoutSessionRepository(db),
+            payment_repo=SQLPaymentRepository(db),
+            product_repo=SQLProductRepository(db),
+            promotion_repo=SQLPromotionRepository(db),
+            user_repo=SQLUserRepository(db),
+            address_repo=SQLAddressRepository(db),
+            coupon_repo=SQLCouponRepository(db),
+            delivery_service=DeliveryFeeService(),
             mp_service=MercadoPagoService(),
         ).execute(
-            order_id=data.order_id,
+            data=data,
             current_user_id=current_user.id if current_user else None,
         )
         return CreatePaymentPreferenceOut(
             preference_id=preference.preference_id,
             init_point=preference.init_point,
             sandbox_init_point=preference.sandbox_init_point,
-            order_id=order.id,
+            checkout_session_id=checkout_session.id,
+            external_reference=checkout_session.external_reference,
+            order_id=order.id if order else None,
         )
     except DomainError as exc:
         raise domain_error_to_http(exc)
@@ -61,9 +81,17 @@ async def debug_payment_preference_payload(
     try:
         payload = await CreatePaymentPreferenceUseCase(
             order_repo=SQLOrderRepository(db),
+            checkout_repo=SQLCheckoutSessionRepository(db),
+            payment_repo=SQLPaymentRepository(db),
+            product_repo=SQLProductRepository(db),
+            promotion_repo=SQLPromotionRepository(db),
+            user_repo=SQLUserRepository(db),
+            address_repo=SQLAddressRepository(db),
+            coupon_repo=SQLCouponRepository(db),
+            delivery_service=DeliveryFeeService(),
             mp_service=MercadoPagoService(),
         ).build_payload(
-            order_id=data.order_id,
+            data=data,
             current_user_id=current_user.id if current_user else None,
         )
         return JSONResponse(payload)
@@ -126,6 +154,14 @@ async def mercadopago_webhook(
     try:
         await ProcessMercadoPagoWebhookUseCase(
             order_repo=SQLOrderRepository(db),
+            checkout_repo=SQLCheckoutSessionRepository(db),
+            payment_repo=SQLPaymentRepository(db),
+            product_repo=SQLProductRepository(db),
+            promotion_repo=SQLPromotionRepository(db),
+            user_repo=SQLUserRepository(db),
+            address_repo=SQLAddressRepository(db),
+            coupon_repo=SQLCouponRepository(db),
+            delivery_service=DeliveryFeeService(),
             mp_service=service,
         ).execute(payment_id)
     except DomainError:
