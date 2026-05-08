@@ -512,6 +512,20 @@ class SQLCheckoutSessionRepository(CheckoutSessionRepository):
         )
         return await self.get_by_id(session_id)
 
+    async def claim_for_order_creation(self, session_id: int) -> Optional[CheckoutSession]:
+        result = await self._db.execute(
+            update(CheckoutSessionORM)
+            .where(
+                CheckoutSessionORM.id == session_id,
+                CheckoutSessionORM.created_order_id == None,
+                CheckoutSessionORM.status.in_(("pending", "pendiente")),
+            )
+            .values(status="processing_order", updated_at=datetime.now(UTC))
+        )
+        if result.rowcount == 0:
+            return await self.get_by_id(session_id)
+        return await self.get_by_id(session_id)
+
 
 class SQLPaymentRepository(PaymentRepository):
     def __init__(self, session: AsyncSession):

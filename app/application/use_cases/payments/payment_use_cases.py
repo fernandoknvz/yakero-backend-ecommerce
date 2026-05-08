@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from secrets import token_urlsafe
@@ -27,6 +28,10 @@ from .mercadopago_service import MercadoPagoPayment, MercadoPagoPreference, Merc
 
 
 POINTS_PER_PESO = Decimal("0.01")
+AMOUNT_MISMATCH_STATUS = "amount_mismatch"
+PROCESSING_ORDER_STATUS = "processing_order"
+
+logger = logging.getLogger(__name__)
 
 
 class CreatePaymentPreferenceUseCase:
@@ -298,6 +303,12 @@ class ProcessMercadoPagoWebhookUseCase:
             return await self._process_legacy_order_payment(mp_payment)
 
         mapped_status = self._map_payment_status(mp_payment.status)
+        amount_matches = self._amount_matches(mp_payment.amount, checkout_session.total)
+        internal_status = (
+            AMOUNT_MISMATCH_STATUS
+            if mapped_status == PaymentStatus.PAID.value and not amount_matches
+            else mapped_status
+        )
         approved_at = datetime.now(UTC) if mapped_status == PaymentStatus.PAID.value else None
         payment = await self._payments.upsert(
             Payment(
@@ -307,7 +318,7 @@ class ProcessMercadoPagoWebhookUseCase:
                 provider="mercadopago",
                 provider_payment_id=mp_payment.payment_id,
                 provider_preference_id=mp_payment.preference_id or checkout_session.mp_preference_id,
-                status=mapped_status,
+                status=internal_status,
                 provider_status=mp_payment.status,
                 amount=mp_payment.amount or checkout_session.total,
                 currency="CLP",
@@ -316,8 +327,27 @@ class ProcessMercadoPagoWebhookUseCase:
             )
         )
 
+        self._log_webhook_result(
+            checkout_session=checkout_session,
+            payment=payment,
+            mp_payment=mp_payment,
+            payment_status=internal_status,
+            result="payment_saved",
+        )
+
         if mapped_status != PaymentStatus.PAID.value:
-            await self._checkout_sessions.update_status(checkout_session.id, mapped_status)
+            await self._checkout_sessions.update_status(checkout_session.id, internal_status)
+            return None
+
+        if not amount_matches:
+            await self._checkout_sessions.update_status(checkout_session.id, AMOUNT_MISMATCH_STATUS)
+            self._log_webhook_result(
+                checkout_session=checkout_session,
+                payment=payment,
+                mp_payment=mp_payment,
+                payment_status=internal_status,
+                result="amount_mismatch_no_order",
+            )
             return None
 
         return await self.create_order_from_approved_payment(checkout_session, payment, mp_payment)
@@ -327,10 +357,18 @@ class ProcessMercadoPagoWebhookUseCase:
         checkout_session: CheckoutSession,
         payment: Payment,
         mp_payment: MercadoPagoPayment,
-    ) -> Order:
+    ) -> Order | None:
         if payment.order_id:
             existing = await self._orders.get_by_id(payment.order_id)
             if existing:
+                self._log_webhook_result(
+                    checkout_session=checkout_session,
+                    payment=payment,
+                    mp_payment=mp_payment,
+                    payment_status=payment.status,
+                    result="existing_order_from_payment",
+                    order_id=existing.id,
+                )
                 return existing
 
         if checkout_session.created_order_id:
@@ -338,7 +376,49 @@ class ProcessMercadoPagoWebhookUseCase:
             if existing:
                 if payment.id:
                     await self._payments.attach_order(payment.id, existing.id)
+                self._log_webhook_result(
+                    checkout_session=checkout_session,
+                    payment=payment,
+                    mp_payment=mp_payment,
+                    payment_status=payment.status,
+                    result="existing_order_from_checkout_session",
+                    order_id=existing.id,
+                )
                 return existing
+
+        claimed_session = await self._checkout_sessions.claim_for_order_creation(checkout_session.id)
+        if not claimed_session:
+            self._log_webhook_result(
+                checkout_session=checkout_session,
+                payment=payment,
+                mp_payment=mp_payment,
+                payment_status=payment.status,
+                result="checkout_session_not_found",
+            )
+            return None
+        if claimed_session.created_order_id:
+            existing = await self._orders.get_by_id(claimed_session.created_order_id)
+            if existing:
+                if payment.id:
+                    await self._payments.attach_order(payment.id, existing.id)
+                self._log_webhook_result(
+                    checkout_session=claimed_session,
+                    payment=payment,
+                    mp_payment=mp_payment,
+                    payment_status=payment.status,
+                    result="duplicate_webhook_existing_order",
+                    order_id=existing.id,
+                )
+                return existing
+        if claimed_session.status != PROCESSING_ORDER_STATUS:
+            self._log_webhook_result(
+                checkout_session=claimed_session,
+                payment=payment,
+                mp_payment=mp_payment,
+                payment_status=payment.status,
+                result="duplicate_webhook_claim_rejected",
+            )
+            return None
 
         order_input = CreateOrderInput(**checkout_session.cart_snapshot)
         order = await CreateOrderUseCase(
@@ -367,6 +447,14 @@ class ProcessMercadoPagoWebhookUseCase:
         if payment.id:
             await self._payments.attach_order(payment.id, order.id)
         await self._checkout_sessions.update_status(checkout_session.id, PaymentStatus.PAID.value, order.id)
+        self._log_webhook_result(
+            checkout_session=checkout_session,
+            payment=payment,
+            mp_payment=mp_payment,
+            payment_status=PaymentStatus.PAID.value,
+            result="order_created",
+            order_id=order.id,
+        )
         return order
 
     async def _resolve_checkout_session(self, payment: MercadoPagoPayment) -> Optional[CheckoutSession]:
@@ -423,6 +511,33 @@ class ProcessMercadoPagoWebhookUseCase:
         if normalized in {"rejected", "cancelled", "cancelled_by_user", "refunded", "charged_back"}:
             return PaymentStatus.REJECTED.value
         return PaymentStatus.PENDING.value
+
+    def _amount_matches(self, paid_amount: Optional[Decimal], expected_amount: Decimal) -> bool:
+        if paid_amount is None:
+            return False
+        return Decimal(paid_amount).quantize(Decimal("1")) == Decimal(expected_amount).quantize(Decimal("1"))
+
+    def _log_webhook_result(
+        self,
+        *,
+        checkout_session: CheckoutSession,
+        payment: Payment,
+        mp_payment: MercadoPagoPayment,
+        payment_status: str,
+        result: str,
+        order_id: Optional[int] = None,
+    ) -> None:
+        logger.info(
+            "Mercado Pago payment processing result",
+            extra={
+                "external_reference": mp_payment.external_reference,
+                "checkout_session_id": checkout_session.id,
+                "provider_payment_id": mp_payment.payment_id,
+                "payment_status": payment_status,
+                "order_id": order_id or payment.order_id or checkout_session.created_order_id,
+                "result": result,
+            },
+        )
 
     def _parse_datetime(self, value: Optional[str]) -> Optional[datetime]:
         if not value:

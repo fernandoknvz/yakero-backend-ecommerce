@@ -125,9 +125,21 @@ class MercadoPagoService:
             "external_reference": checkout_session.external_reference,
             "notification_url": f"{backend_url}{settings.api_v1_prefix}/payments/webhook",
             "back_urls": {
-                "success": f"{frontend_url}/checkout/success?checkout_session_id={checkout_session.id}",
-                "failure": f"{frontend_url}/checkout/failure?checkout_session_id={checkout_session.id}",
-                "pending": f"{frontend_url}/checkout/pending?checkout_session_id={checkout_session.id}",
+                "success": (
+                    f"{frontend_url}/checkout/success"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
+                "failure": (
+                    f"{frontend_url}/checkout/failure"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
+                "pending": (
+                    f"{frontend_url}/checkout/pending"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
             },
             "auto_return": "approved",
             "metadata": {
@@ -197,6 +209,17 @@ class MercadoPagoService:
             ) from exc
 
     def _build_items(self, order: Order) -> list[dict[str, Any]]:
+        if order.discount > 0:
+            return [
+                {
+                    "id": f"order-{order.id}",
+                    "title": "Pedido Yakero",
+                    "quantity": 1,
+                    "unit_price": float(order.total),
+                    "currency_id": "CLP",
+                }
+            ]
+
         items = [
             {
                 "id": str(item.product_id or item.promotion_id or item.id or "item"),
@@ -220,6 +243,17 @@ class MercadoPagoService:
         return items
 
     def _build_checkout_items(self, checkout_session: CheckoutSession) -> list[dict[str, Any]]:
+        if checkout_session.discount > 0:
+            return [
+                {
+                    "id": f"checkout-{checkout_session.id}",
+                    "title": "Pedido Yakero",
+                    "quantity": 1,
+                    "unit_price": float(checkout_session.total),
+                    "currency_id": "CLP",
+                }
+            ]
+
         pricing = checkout_session.pricing_snapshot or {}
         items = [
             {

@@ -120,7 +120,7 @@ def test_reject_invalid_configuration_preview(client):
     assert payload["detail"]["code"] == "MODIFIER_REQUIRED"
 
 
-def test_create_valid_order(client):
+def test_public_create_order_is_blocked(client):
     response = client.post(
         "/api/v1/orders/",
         json={
@@ -136,17 +136,13 @@ def test_create_valid_order(client):
             "notes": "sin wasabi",
         },
     )
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["id"] == 1
-    assert payload["mp_preference_id"] is None
-    assert payload["payment_provider"] is None
-    assert payload["total"] == "5490"
+    assert response.status_code == 401
+    assert client.get("/api/v1/orders/1").status_code == 404
 
 
 def test_reject_order_with_manipulated_total(client):
     response = client.post(
-        "/api/v1/orders/",
+        "/api/v1/orders/preview",
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -178,9 +174,10 @@ def test_validate_coupon(client):
     assert payload["calculated_discount"] == "500"
 
 
-def test_create_payment_preference_with_valid_order(client):
+def test_create_payment_preference_with_valid_order(client, admin_header):
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -195,7 +192,11 @@ def test_create_payment_preference_with_valid_order(client):
     )
     order_id = order_response.json()["id"]
 
-    response = client.post("/api/v1/payments/create-preference", json={"order_id": order_id})
+    response = client.post(
+        "/api/v1/payments/create-preference",
+        headers=admin_header,
+        json={"order_id": order_id},
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload["order_id"] == order_id
@@ -227,6 +228,103 @@ def test_create_payment_preference_from_cart_does_not_create_order(client):
 
     order = client.get("/api/v1/orders/1")
     assert order.status_code == 404
+
+
+def test_payment_status_pending_is_public_for_guest(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    external_reference = preference.json()["external_reference"]
+
+    response = client.get(f"/api/v1/payments/status/{external_reference}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["external_reference"] == external_reference
+    assert payload["checkout_session_status"] == "pending"
+    assert payload["payment_status"] is None
+    assert payload["order_id"] is None
+    assert payload["total"] == "5490"
+
+
+def test_payment_status_approved_exposes_order_without_login(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    external_reference = preference.json()["external_reference"]
+    webhook = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_approved_status_1"}},
+    )
+    assert webhook.status_code == 200
+
+    response = client.get(f"/api/v1/payments/status/{external_reference}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["checkout_session_status"] == "paid"
+    assert payload["payment_status"] == "approved"
+    assert payload["order_id"] == 1
+    assert payload["order_status"] == "confirmed"
+
+
+def test_payment_status_amount_mismatch_is_public_without_order(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    external_reference = preference.json()["external_reference"]
+    client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_approved_mismatch_status_1"}},
+    )
+
+    response = client.get(f"/api/v1/payments/status/{external_reference}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["checkout_session_status"] == "amount_mismatch"
+    assert payload["payment_status"] == "amount_mismatch"
+    assert payload["order_id"] is None
+
+
+def test_payment_status_not_found_is_controlled(client):
+    response = client.get("/api/v1/payments/status/not-real-reference")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Checkout no encontrado."
 
 
 def test_webhook_approved_creates_order_once_from_checkout_session(client):
@@ -294,6 +392,32 @@ def test_webhook_rejected_saves_payment_without_creating_order(client):
     assert order.status_code == 404
 
 
+def test_webhook_amount_mismatch_does_not_create_order(client):
+    preference = client.post(
+        "/api/v1/payments/create-preference",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+    assert preference.status_code == 200
+
+    response = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": "pay_approved_mismatch_1"}},
+    )
+
+    assert response.status_code == 200
+    assert client.get("/api/v1/orders/1").status_code == 404
+
+
 def test_webhook_duplicate_does_not_duplicate_order(client):
     preference = client.post(
         "/api/v1/payments/create-preference",
@@ -322,12 +446,13 @@ def test_webhook_duplicate_does_not_duplicate_order(client):
     assert client.get("/api/v1/orders/2").status_code == 404
 
 
-def test_debug_preference_payload_available_in_debug(client, monkeypatch):
+def test_debug_preference_payload_available_in_debug(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
 
     monkeypatch.setattr(payments_router_module.settings, "debug", True)
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -342,22 +467,25 @@ def test_debug_preference_payload_available_in_debug(client, monkeypatch):
     )
     order_id = order_response.json()["id"]
 
-    response = client.post("/api/v1/payments/debug/preference-payload", json={"order_id": order_id})
+    response = client.post(
+        "/api/v1/payments/debug/preference-payload",
+        headers=admin_header,
+        json={"order_id": order_id},
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload["external_reference"] == str(order_id)
     assert payload["notification_url"].startswith("https://")
     assert payload["items"][0]["currency_id"] == "CLP"
-    assert payload["payer"]["email"] == "guest@yakero.cl"
 
 
-def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, auth_header):
+def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
 
     monkeypatch.setattr(payments_router_module.settings, "debug", True)
     order_response = client.post(
         "/api/v1/orders/",
-        headers=auth_header,
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "items": [
@@ -373,12 +501,36 @@ def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch,
 
     response = client.post(
         "/api/v1/payments/debug/preference-payload",
-        headers=auth_header,
+        headers=admin_header,
         json={"order_id": order_id},
     )
     assert response.status_code == 200
     payload = response.json()
     assert "payer" not in payload
+
+
+def test_debug_checkout_payload_includes_external_reference_in_back_urls(client, monkeypatch):
+    from app.infrastructure.api.routers import payments as payments_router_module
+
+    monkeypatch.setattr(payments_router_module.settings, "debug", True)
+    response = client.post(
+        "/api/v1/payments/debug/preference-payload",
+        json={
+            "delivery_type": "retiro",
+            "guest_email": "guest@yakero.cl",
+            "items": [
+                {
+                    "product_id": 1,
+                    "quantity": 1,
+                    "selected_modifiers": [{"modifier_option_id": 1}],
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "external_reference=debug_checkout_session" in payload["back_urls"]["success"]
 
 
 def test_create_order_does_not_call_mercado_pago(client, monkeypatch):
@@ -405,19 +557,17 @@ def test_create_order_does_not_call_mercado_pago(client, monkeypatch):
         },
     )
 
-    assert response.status_code == 201
-    payload = response.json()
-    assert payload["id"] == 1
-    assert payload["mp_preference_id"] is None
+    assert response.status_code == 401
 
 
-def test_payment_preference_failure_does_not_break_order_creation(client, monkeypatch):
+def test_payment_preference_failure_does_not_break_order_creation(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
     from app.infrastructure.api import errors as api_errors_module
     from app.domain.exceptions import PaymentError
 
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -452,13 +602,17 @@ def test_payment_preference_failure_does_not_break_order_creation(client, monkey
     monkeypatch.setattr(payments_router_module, "MercadoPagoService", FailingMercadoPagoService)
     monkeypatch.setattr(api_errors_module.settings, "debug", True)
 
-    response = client.post("/api/v1/payments/create-preference", json={"order_id": order_id})
+    response = client.post(
+        "/api/v1/payments/create-preference",
+        headers=admin_header,
+        json={"order_id": order_id},
+    )
     assert response.status_code == 400
     assert response.json()["detail"]["code"] == "PAYMENT_ERROR"
     assert response.json()["detail"]["debug"]["provider_status_code"] == 400
     assert "notification_url" in response.json()["detail"]["debug"]["request_payload"]
 
-    order = client.get(f"/api/v1/orders/{order_id}")
+    order = client.get(f"/api/v1/orders/{order_id}", headers=admin_header)
     payload = order.json()
     assert payload["id"] == order_id
     assert payload["mp_preference_id"] is None
@@ -470,9 +624,10 @@ def test_reject_payment_preference_for_missing_order(client):
     assert response.json()["detail"]["code"] == "NOT_FOUND"
 
 
-def test_reject_payment_preference_for_paid_order(client):
+def test_reject_payment_preference_for_paid_order(client, admin_header):
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -493,14 +648,19 @@ def test_reject_payment_preference_for_paid_order(client):
     )
     assert webhook_response.status_code == 200
 
-    response = client.post("/api/v1/payments/create-preference", json={"order_id": order_id})
+    response = client.post(
+        "/api/v1/payments/create-preference",
+        headers=admin_header,
+        json={"order_id": order_id},
+    )
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "VALIDATION_ERROR"
 
 
-def test_webhook_payment_approved_updates_order(client):
+def test_webhook_payment_approved_updates_order(client, admin_header):
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -522,15 +682,16 @@ def test_webhook_payment_approved_updates_order(client):
     assert response.status_code == 200
     assert response.json()["status"] == "processed"
 
-    order = client.get(f"/api/v1/orders/{order_id}")
+    order = client.get(f"/api/v1/orders/{order_id}", headers=admin_header)
     payload = order.json()
     assert payload["payment_status"] == "pagado"
     assert payload["mp_payment_id"] == "pay_approved_1"
 
 
-def test_get_order_exposes_payment_status(client):
+def test_get_order_exposes_payment_status(client, admin_header):
     order_response = client.post(
         "/api/v1/orders/",
+        headers=admin_header,
         json={
             "delivery_type": "retiro",
             "guest_email": "guest@yakero.cl",
@@ -544,7 +705,7 @@ def test_get_order_exposes_payment_status(client):
         },
     )
     order_id = order_response.json()["id"]
-    response = client.get(f"/api/v1/orders/{order_id}")
+    response = client.get(f"/api/v1/orders/{order_id}", headers=admin_header)
     assert response.status_code == 200
     payload = response.json()
     assert payload["payment_status"] == "pendiente"
@@ -561,6 +722,18 @@ def test_webhook_invalid_signature(client, monkeypatch):
     )
     assert response.status_code == 401
     assert response.json()["detail"] == "Firma de webhook invalida"
+
+
+def test_webhook_requires_signature_when_secret_is_configured(client, monkeypatch):
+    from app.infrastructure.api.routers import payments as payments_router_module
+
+    monkeypatch.setattr(payments_router_module.settings, "mp_webhook_secret", "secret")
+    response = client.post(
+        "/api/v1/payments/webhook",
+        json={"type": "payment", "data": {"id": 123}},
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Firma de webhook requerida"
 
 
 def test_internal_bootstrap_requires_valid_token(client, monkeypatch):

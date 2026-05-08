@@ -463,6 +463,16 @@ class FakeCheckoutSessionRepository:
         self.sessions[session_id] = updated
         return updated
 
+    async def claim_for_order_creation(self, session_id: int):
+        session = self.sessions.get(session_id)
+        if not session:
+            return None
+        if session.created_order_id is not None or session.status not in {"pending", "pendiente"}:
+            return session
+        updated = replace(session, status="processing_order", updated_at=datetime.now(UTC))
+        self.sessions[session_id] = updated
+        return updated
+
 
 class FakePaymentRepository:
     payments: dict[int, Payment] = {}
@@ -568,9 +578,21 @@ class FakeMercadoPagoService:
             "external_reference": checkout_session.external_reference,
             "notification_url": "https://api.test/api/v1/payments/webhook",
             "back_urls": {
-                "success": f"https://front.test/checkout/success?checkout_session_id={checkout_session.id}",
-                "failure": f"https://front.test/checkout/failure?checkout_session_id={checkout_session.id}",
-                "pending": f"https://front.test/checkout/pending?checkout_session_id={checkout_session.id}",
+                "success": (
+                    "https://front.test/checkout/success"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
+                "failure": (
+                    "https://front.test/checkout/failure"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
+                "pending": (
+                    "https://front.test/checkout/pending"
+                    f"?external_reference={checkout_session.external_reference}"
+                    f"&checkout_session_id={checkout_session.id}"
+                ),
             },
             "auto_return": "approved",
             "metadata": {"checkout_session_id": checkout_session.id, "environment": "sandbox"},
@@ -591,18 +613,19 @@ class FakeMercadoPagoService:
         session = next(iter(FakeCheckoutSessionRepository.sessions.values()), None)
         external_reference = session.external_reference if session else "1"
         preference_id = session.mp_preference_id if session else "pref_test_123"
+        amount = Decimal("1") if "mismatch" in payment_id else Decimal("5490")
         return SimpleNamespace(
             payment_id=payment_id,
             status=status,
             external_reference=external_reference,
             preference_id=preference_id,
-            amount=Decimal("5490"),
+            amount=amount,
             raw={
                 "id": payment_id,
                 "status": status,
                 "external_reference": external_reference,
                 "metadata": {"checkout_session_id": session.id if session else None},
-                "transaction_amount": 5490,
+                "transaction_amount": int(amount),
             },
         )
 
@@ -684,4 +707,10 @@ def client():
 @pytest.fixture
 def auth_header():
     token = create_access_token(user_id=1, role=UserRole.CUSTOMER)
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_header():
+    token = create_access_token(user_id=2, role=UserRole.ADMIN)
     return {"Authorization": f"Bearer {token}"}

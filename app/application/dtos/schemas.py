@@ -386,6 +386,18 @@ class CreatePaymentPreferenceOut(BaseModel):
     order_id: Optional[int] = None
 
 
+class PaymentStatusResponse(BaseModel):
+    external_reference: str
+    checkout_session_status: str
+    payment_status: Optional[str] = None
+    order_id: Optional[int] = None
+    order_status: Optional[str] = None
+    total: Decimal
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    message: str
+
+
 class PosStatusUpdateInput(BaseModel):
     status: OrderStatus
     pos_order_ref: Optional[str] = None

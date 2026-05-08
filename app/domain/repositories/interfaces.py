@@ -107,6 +107,8 @@ class CheckoutSessionRepository(ABC):
         status: str,
         created_order_id: Optional[int] = None,
     ) -> CheckoutSession: ...
+    @abstractmethod
+    async def claim_for_order_creation(self, session_id: int) -> Optional[CheckoutSession]: ...
 
 
 class PaymentRepository(ABC):

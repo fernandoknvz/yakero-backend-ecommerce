@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database.repositories.sql_repositories import (
@@ -19,9 +19,10 @@ from ....application.use_cases.orders.order_use_cases import GetOrderUseCase, Ge
 from ....application.use_cases.orders.pricing import OrderPricingService
 from ....application.use_cases.services.delivery_service import DeliveryFeeService
 from ....application.use_cases.services.points_service import PointsService
-from ....auth import get_current_user, get_optional_user
+from ....auth import get_current_user, get_optional_user, require_role
 from ....domain.exceptions import DomainError
 from ....domain.models.entities import User
+from ....domain.models.enums import UserRole
 
 
 router = APIRouter(prefix="/orders", tags=["Pedidos"])
@@ -100,11 +101,8 @@ async def preview_order(
 async def create_order(
     data: CreateOrderInput,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.POS_SERVICE)),
 ):
-    if not current_user and not data.guest_email:
-        raise HTTPException(status_code=422, detail="Se requiere guest_email para pedidos sin cuenta.")
-
     user_repo = SQLUserRepository(db)
     order_repo = SQLOrderRepository(db)
 

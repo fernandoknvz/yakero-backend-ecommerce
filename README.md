@@ -57,6 +57,26 @@ uvicorn app.main:app --reload
 
 La base Docker expone MySQL en `localhost:3310`. Si usas otro MySQL local, ajusta `DATABASE_URL`.
 
+## Despliegue Docker
+
+Para VPS/Portainer usa los archivos productivos:
+
+- `Dockerfile`
+- `.dockerignore`
+- `docker-compose.prod.yml`
+- `docs/deploy-docker.md`
+
+Comandos base:
+
+```bash
+cp .env.example .env
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d db api
+docker compose -f docker-compose.prod.yml --profile tools run --rm api-migrate
+```
+
+Las migraciones no se ejecutan dentro del `CMD` principal de la API. Revisa la guia completa en `docs/deploy-docker.md`.
+
 ## Variables importantes
 
 - `ENVIRONMENT`: `development`, `staging` o `production`.
