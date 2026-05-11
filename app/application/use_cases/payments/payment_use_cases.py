@@ -302,6 +302,19 @@ class ProcessMercadoPagoWebhookUseCase:
         if not checkout_session:
             return await self._process_legacy_order_payment(mp_payment)
 
+        existing_payment = await self._payments.get_by_provider_payment_id("mercadopago", mp_payment.payment_id)
+        if existing_payment:
+            self._log_duplicate_payment(
+                checkout_session=checkout_session,
+                payment=existing_payment,
+                mp_payment=mp_payment,
+            )
+            if existing_payment.order_id:
+                return await self._orders.get_by_id(existing_payment.order_id)
+            if checkout_session.created_order_id:
+                return await self._orders.get_by_id(checkout_session.created_order_id)
+            return None
+
         mapped_status = self._map_payment_status(mp_payment.status)
         amount_matches = self._amount_matches(mp_payment.amount, checkout_session.total)
         internal_status = (
@@ -394,6 +407,15 @@ class ProcessMercadoPagoWebhookUseCase:
                 mp_payment=mp_payment,
                 payment_status=payment.status,
                 result="checkout_session_not_found",
+            )
+            return None
+        if claimed_session.status == PROCESSING_ORDER_STATUS and checkout_session.status == PROCESSING_ORDER_STATUS:
+            self._log_webhook_result(
+                checkout_session=claimed_session,
+                payment=payment,
+                mp_payment=mp_payment,
+                payment_status=payment.status,
+                result="duplicate_webhook_order_already_processing",
             )
             return None
         if claimed_session.created_order_id:
@@ -536,6 +558,26 @@ class ProcessMercadoPagoWebhookUseCase:
                 "payment_status": payment_status,
                 "order_id": order_id or payment.order_id or checkout_session.created_order_id,
                 "result": result,
+            },
+        )
+
+    def _log_duplicate_payment(
+        self,
+        *,
+        checkout_session: CheckoutSession,
+        payment: Payment,
+        mp_payment: MercadoPagoPayment,
+    ) -> None:
+        logger.info(
+            "Mercado Pago duplicate webhook ignored",
+            extra={
+                "external_reference": mp_payment.external_reference,
+                "checkout_session_id": checkout_session.id,
+                "provider_payment_id": mp_payment.payment_id,
+                "existing_payment_id": payment.id,
+                "existing_order_id": payment.order_id or checkout_session.created_order_id,
+                "provider_status": mp_payment.status,
+                "result": "duplicate_payment_already_registered",
             },
         )
 

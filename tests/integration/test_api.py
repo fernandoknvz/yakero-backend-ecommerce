@@ -419,6 +419,8 @@ def test_webhook_amount_mismatch_does_not_create_order(client):
 
 
 def test_webhook_duplicate_does_not_duplicate_order(client):
+    from tests.conftest import FakePaymentRepository
+
     preference = client.post(
         "/api/v1/payments/create-preference",
         json={
@@ -444,6 +446,7 @@ def test_webhook_duplicate_does_not_duplicate_order(client):
 
     assert client.get("/api/v1/orders/1").status_code == 200
     assert client.get("/api/v1/orders/2").status_code == 404
+    assert len(FakePaymentRepository.payments) == 1
 
 
 def test_debug_preference_payload_available_in_debug(client, monkeypatch, admin_header):

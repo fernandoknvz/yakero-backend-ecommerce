@@ -468,7 +468,7 @@ class FakeCheckoutSessionRepository:
         if not session:
             return None
         if session.created_order_id is not None or session.status not in {"pending", "pendiente"}:
-            return session
+            return session if session.created_order_id is not None else None
         updated = replace(session, status="processing_order", updated_at=datetime.now(UTC))
         self.sessions[session_id] = updated
         return updated

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+import logging
 from typing import Optional
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
@@ -25,6 +27,9 @@ from ..models.orm_models import (
 
 
 # ─── Mappers ORM → Domain ─────────────────────────────────────────────────────
+
+logger = logging.getLogger(__name__)
+
 
 def _map_modifier_option(o) -> ModifierOption:
     return ModifierOption(
@@ -523,7 +528,10 @@ class SQLCheckoutSessionRepository(CheckoutSessionRepository):
             .values(status="processing_order", updated_at=datetime.now(UTC))
         )
         if result.rowcount == 0:
-            return await self.get_by_id(session_id)
+            current = await self.get_by_id(session_id)
+            if current and current.created_order_id:
+                return current
+            return None
         return await self.get_by_id(session_id)
 
 
@@ -588,7 +596,24 @@ class SQLPaymentRepository(PaymentRepository):
             updated_at=payment.updated_at or now,
         )
         self._db.add(orm)
-        await self._db.flush()
+        try:
+            await self._db.flush()
+        except IntegrityError:
+            await self._db.rollback()
+            if payment.provider_payment_id:
+                existing = await self.get_by_provider_payment_id(payment.provider, payment.provider_payment_id)
+                if existing:
+                    logger.info(
+                        "Duplicate payment insert ignored",
+                        extra={
+                            "provider": payment.provider,
+                            "provider_payment_id": payment.provider_payment_id,
+                            "existing_payment_id": existing.id,
+                            "existing_order_id": existing.order_id,
+                        },
+                    )
+                    return existing
+            raise
         return _map_payment(orm)
 
     async def attach_order(self, payment_id: int, order_id: int) -> Payment:
