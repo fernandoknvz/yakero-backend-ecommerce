@@ -479,6 +479,37 @@ def test_debug_preference_payload_available_in_debug(client, monkeypatch, admin_
     assert payload["items"][0]["currency_id"] == "CLP"
 
 
+def test_debug_mercadopago_config_is_internal_and_masks_token(client, monkeypatch):
+    from app.infrastructure.api.routers import debug as debug_router_module
+
+    monkeypatch.setattr(debug_router_module.settings, "internal_bootstrap_token", "internal-secret")
+    monkeypatch.setattr(debug_router_module.settings, "mp_access_token", "APP_USR-super-secret-token")
+    monkeypatch.setattr(debug_router_module.settings, "mp_env", "production")
+    monkeypatch.setattr(debug_router_module.settings, "backend_public_url", "https://api.yakero.cl")
+    monkeypatch.setattr(debug_router_module.settings, "frontend_public_url", "https://yakero.cl")
+
+    unauthorized = client.get("/api/v1/debug/mercadopago")
+    assert unauthorized.status_code == 401
+
+    response = client.get(
+        "/api/v1/debug/mercadopago",
+        headers={"X-Internal-Token": "internal-secret"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mp_token_exists"] is True
+    assert payload["mp_token_prefix"] == "APP_USR"
+    assert payload["mp_token_length"] == len("APP_USR-super-secret-token")
+    assert "super-secret-token" not in str(payload)
+    assert payload["frontend_url"] == "https://yakero.cl"
+    assert payload["backend_url"] == "https://api.yakero.cl"
+    assert payload["notification_url"] == "https://api.yakero.cl/api/v1/payments/webhook"
+    assert payload["success_url"].startswith("https://yakero.cl/checkout/success")
+    assert payload["currency_id"] == "CLP"
+    assert payload["environment"] == "production"
+    assert payload["usa_sandbox_init_point"] is False
+
+
 def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
 

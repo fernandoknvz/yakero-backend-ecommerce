@@ -50,9 +50,23 @@ class MercadoPagoService:
     async def create_preference(self, order: Order, back_urls: dict[str, str]) -> MercadoPagoPreference:
         self._ensure_configured()
         payload = self.build_preference_payload(order, back_urls)
-        if settings.debug:
-            logger.info("Mercado Pago preference payload prepared: %s", self._safe_json(payload))
-        response = await self._request("POST", "/checkout/preferences", json=payload)
+        logger.info(
+            "Mercado Pago preference request payload=%s",
+            self._safe_json(self._safe_preference_payload(payload)),
+        )
+        try:
+            response = await self._request("POST", "/checkout/preferences", json=payload)
+        except Exception as exc:
+            logger.exception(
+                "Mercado Pago preference request failed exception_type=%s message=%s",
+                type(exc).__name__,
+                str(exc),
+            )
+            raise
+        logger.info(
+            "Mercado Pago preference response summary=%s",
+            self._safe_json(self._safe_preference_response(response)),
+        )
         preference_id = response.get("id")
         if not preference_id:
             raise PaymentError(
@@ -71,9 +85,23 @@ class MercadoPagoService:
     ) -> MercadoPagoPreference:
         self._ensure_configured()
         payload = self.build_checkout_preference_payload(checkout_session)
-        if settings.debug:
-            logger.info("Mercado Pago checkout preference payload prepared: %s", self._safe_json(payload))
-        response = await self._request("POST", "/checkout/preferences", json=payload)
+        logger.info(
+            "Mercado Pago checkout preference request payload=%s",
+            self._safe_json(self._safe_preference_payload(payload)),
+        )
+        try:
+            response = await self._request("POST", "/checkout/preferences", json=payload)
+        except Exception as exc:
+            logger.exception(
+                "Mercado Pago checkout preference request failed exception_type=%s message=%s",
+                type(exc).__name__,
+                str(exc),
+            )
+            raise
+        logger.info(
+            "Mercado Pago checkout preference response summary=%s",
+            self._safe_json(self._safe_preference_response(response)),
+        )
         preference_id = response.get("id")
         if not preference_id:
             raise PaymentError(
@@ -167,10 +195,12 @@ class MercadoPagoService:
                 response_json = self._parse_json_safely(response_text)
                 safe_payload = self._safe_payload(payload)
                 logger.warning(
-                    "Mercado Pago API error status=%s payload=%s response=%s",
+                    "Mercado Pago API error status=%s exception_type=%s message=%s payload=%s response=%s",
                     exc.response.status_code,
+                    type(exc).__name__,
+                    str(exc),
                     self._safe_json(safe_payload),
-                    self._safe_json(response_json if response_json is not None else response_text),
+                    self._safe_json(self._safe_preference_response(response_json) if response_json is not None else response_text),
                 )
                 public_message = "Error al crear preferencia de pago en Mercado Pago."
                 if exc.response.status_code in {400, 401, 403}:
@@ -189,7 +219,9 @@ class MercadoPagoService:
                 ) from exc
             except httpx.HTTPError as exc:
                 logger.exception(
-                    "Mercado Pago communication error payload=%s",
+                    "Mercado Pago communication error exception_type=%s message=%s payload=%s",
+                    type(exc).__name__,
+                    str(exc),
                     self._safe_json(self._safe_payload(payload)),
                 )
                 raise PaymentError(
@@ -366,7 +398,54 @@ class MercadoPagoService:
     def _safe_payload(self, payload: Any) -> Any:
         if payload is None:
             return None
-        return json.loads(json.dumps(payload, default=self._json_default))
+        serialized = json.loads(json.dumps(payload, default=self._json_default))
+        return self._redact_sensitive_fields(serialized)
+
+    def _safe_preference_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        safe_payload = self._safe_payload(payload)
+        if not isinstance(safe_payload, dict):
+            return {}
+        return safe_payload
+
+    def _safe_preference_response(self, response: Any) -> dict[str, Any]:
+        if not isinstance(response, dict):
+            return {"raw_response": response}
+        return self._safe_payload(
+            {
+                "id": response.get("id"),
+                "init_point": response.get("init_point"),
+                "sandbox_init_point": response.get("sandbox_init_point"),
+                "status": response.get("status"),
+                "error": response.get("error"),
+                "message": response.get("message"),
+                "cause": response.get("cause"),
+                "external_reference": response.get("external_reference"),
+            }
+        )
+
+    def _redact_sensitive_fields(self, value: Any) -> Any:
+        if isinstance(value, dict):
+            redacted = {}
+            for key, item in value.items():
+                normalized_key = str(key).lower()
+                if normalized_key in {"access_token", "authorization", "token", "card_number", "security_code"}:
+                    redacted[key] = "***"
+                elif normalized_key == "email" and isinstance(item, str):
+                    redacted[key] = self._mask_email(item)
+                else:
+                    redacted[key] = self._redact_sensitive_fields(item)
+            return redacted
+        if isinstance(value, list):
+            return [self._redact_sensitive_fields(item) for item in value]
+        return value
+
+    def _mask_email(self, value: str) -> str:
+        local, separator, domain = value.partition("@")
+        if not separator:
+            return "***"
+        if not local:
+            return f"***@{domain}"
+        return f"{local[0]}***@{domain}"
 
     def _safe_json(self, value: Any) -> str:
         return json.dumps(value, ensure_ascii=True, default=self._json_default)
