@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: mysql+asyncmy://yakero_user:yakero_pass@db:3306/yakero_ecommerce
+      DATABASE_URL: mysql+aiomysql://yakero_user:yakero_pass@db:3306/yakero_ecommerce
     ports:
       - "8000:8000"
     depends_on:

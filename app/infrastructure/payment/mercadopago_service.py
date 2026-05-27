@@ -46,7 +46,7 @@ class MercadoPagoService:
                 "pending": back_urls.get("pending", settings.mp_back_url_pending),
             },
             "auto_return": "approved",
-            "notification_url": f"{settings.api_base_url}/webhooks/mercadopago",
+            "notification_url": f"{settings.api_base_url}{settings.api_v1_prefix}/payments/webhook",
             "external_reference": str(order.id),
             "metadata": {
                 "order_id": order.id,

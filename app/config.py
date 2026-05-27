@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     backend_public_url: str = ""
     api_v1_prefix: str = "/api/v1"
 
-    # Database (asyncmy driver for async SQLAlchemy)
-    database_url: str = "mysql+asyncmy://user:pass@localhost:3306/yakero_ecommerce"
+    # Database (aiomysql driver for async SQLAlchemy)
+    database_url: str = "mysql+aiomysql://user:pass@localhost:3306/yakero_ecommerce"
 
     # JWT
     jwt_secret: str = "CHANGE_THIS_IN_PRODUCTION"
@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     mp_back_url_pending: str = "https://yakero.cl/checkout/pending"
     app_base_url: str = "http://localhost:5173"
     frontend_public_url: str = ""
+
+    # POS integration
+    pos_api_base_url: str = ""
+    pos_internal_token: str = ""
+    pos_catalog_timeout_seconds: float = 10.0
 
     # Store location (para cálculo de delivery)
     store_lat: float = -33.4094

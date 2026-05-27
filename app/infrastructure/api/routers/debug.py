@@ -2,8 +2,10 @@ import logging
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import JSONResponse
 
 from ....config import settings
+from ...clients import PosClient, PosClientError
 
 
 router = APIRouter(prefix="/debug", tags=["Debug"])
@@ -57,6 +59,57 @@ async def debug_mercadopago_config(
         "usa_sandbox_init_point": settings.mp_env == "sandbox",
         "warning": " ".join(warnings) if warnings else None,
         "warnings": warnings,
+    }
+
+
+@router.get("/pos/catalog-summary")
+async def debug_pos_catalog_summary(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _ensure_debug_allowed(x_internal_token)
+
+    client = PosClient()
+    logger.info(
+        "POS catalog summary debug requested",
+        extra={"pos_base_url": client.base_url},
+    )
+    try:
+        summary = await client.get_catalog_summary()
+    except PosClientError as exc:
+        logger.warning(
+            "POS catalog summary debug failed status_code=%s provider_status_code=%s message=%s",
+            exc.status_code,
+            exc.provider_status_code,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "ok": False,
+                "source": "pos",
+                "error": exc.message,
+            },
+        )
+    except Exception as exc:
+        logger.exception(
+            "Unexpected POS catalog summary debug failure exception_type=%s message=%s",
+            type(exc).__name__,
+            str(exc),
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "source": "pos",
+                "error": "Unexpected POS debug error.",
+            },
+        )
+
+    return {
+        "ok": True,
+        "source": "pos",
+        "base_url": client.base_url,
+        "summary": summary,
     }
 
 

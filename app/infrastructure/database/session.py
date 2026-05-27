@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from ...config import settings
+from .connection import build_async_engine_config
 
 engine_kwargs = {
     "echo": settings.debug,
@@ -9,7 +10,8 @@ engine_kwargs = {
 if settings.testing:
     engine_kwargs["poolclass"] = NullPool
 
-engine = create_async_engine(settings.database_url, **engine_kwargs)
+engine_url, engine_kwargs = build_async_engine_config(settings.database_url, **engine_kwargs)
+engine = create_async_engine(engine_url, **engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

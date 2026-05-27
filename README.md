@@ -5,7 +5,7 @@ Backend REST para ecommerce Yakero construido con FastAPI, SQLAlchemy async, MyS
 ## Stack
 
 - FastAPI + Pydantic v2
-- SQLAlchemy 2 async + asyncmy
+- SQLAlchemy 2 async + aiomysql
 - MySQL 8
 - Alembic
 - JWT con python-jose + passlib/bcrypt
@@ -81,7 +81,7 @@ Las migraciones no se ejecutan dentro del `CMD` principal de la API. Revisa la g
 
 - `ENVIRONMENT`: `development`, `staging` o `production`.
 - `DEBUG`: habilita `/docs` y `/redoc` cuando es `true`.
-- `DATABASE_URL`: URL async de MySQL usando `mysql+asyncmy`.
+- `DATABASE_URL`: URL async de MySQL usando `mysql+aiomysql`.
 - `JWT_SECRET`: obligatorio fuerte para staging/produccion.
 - `ALLOWED_ORIGINS`: lista separada por comas o JSON array.
 - `MP_ACCESS_TOKEN`: requerido para crear preferencias reales de MercadoPago.

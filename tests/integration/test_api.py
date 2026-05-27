@@ -513,6 +513,31 @@ def test_debug_mercadopago_config_is_internal_and_masks_token(client, monkeypatc
     assert payload["usa_sandbox_init_point"] is False
 
 
+def test_debug_pos_catalog_summary_uses_pos_client(client, monkeypatch):
+    from app.infrastructure.api.routers import debug as debug_router_module
+
+    class FakePosClient:
+        base_url = "https://posdev.tehagolaweb.cl"
+
+        async def get_catalog_summary(self):
+            return {"products": 12, "promotions": 3, "branches": 2}
+
+    monkeypatch.setattr(debug_router_module.settings, "internal_bootstrap_token", "internal-secret")
+    monkeypatch.setattr(debug_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/debug/pos/catalog-summary",
+        headers={"X-Internal-Token": "internal-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["source"] == "pos"
+    assert payload["base_url"] == "https://posdev.tehagolaweb.cl"
+    assert payload["summary"] == {"products": 12, "promotions": 3, "branches": 2}
+
+
 def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
 

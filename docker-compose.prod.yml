@@ -27,7 +27,7 @@ services:
     env_file:
       - ${ENV_FILE:-.env}
     environment:
-      DATABASE_URL: mysql+asyncmy://${MYSQL_USER:-yakero_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-yakero_ecommerce}
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER:-yakero_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-yakero_ecommerce}
       DEBUG: "false"
       TESTING: "false"
     ports:
@@ -58,7 +58,7 @@ services:
     env_file:
       - ${ENV_FILE:-.env}
     environment:
-      DATABASE_URL: mysql+asyncmy://${MYSQL_USER:-yakero_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-yakero_ecommerce}
+      DATABASE_URL: mysql+aiomysql://${MYSQL_USER:-yakero_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-yakero_ecommerce}
     command: alembic upgrade head
     depends_on:
       db:

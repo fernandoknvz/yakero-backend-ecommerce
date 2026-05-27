@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 from app.infrastructure.database.models.orm_models import Base
+from app.infrastructure.database.connection import build_async_engine_config
 from app.config import settings
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+database_url, engine_options = build_async_engine_config(settings.database_url)
+config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -45,6 +47,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        **engine_options,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
