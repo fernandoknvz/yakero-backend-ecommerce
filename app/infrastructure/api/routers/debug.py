@@ -1,6 +1,7 @@
 import logging
 from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -126,6 +127,43 @@ async def debug_pos_config(
         "pos_internal_token_preview": _token_preview(settings.pos_internal_token),
         "internal_bootstrap_token_configured": bool(settings.internal_bootstrap_token),
         "internal_bootstrap_token_length": len(settings.internal_bootstrap_token),
+    }
+
+
+@router.get("/pos/raw-summary")
+async def debug_pos_raw_summary(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _ensure_debug_allowed(x_internal_token)
+
+    request_url = "https://posdev.tehagolaweb.cl/api/external/catalog/summary"
+    headers = {"X-Internal-Token": settings.pos_internal_token}
+    async with httpx.AsyncClient(timeout=settings.pos_catalog_timeout_seconds) as client:
+        try:
+            response = await client.get(request_url, headers=headers)
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Raw POS summary debug request failed exception_type=%s message=%s",
+                type(exc).__name__,
+                str(exc).replace(settings.pos_internal_token, "***") if settings.pos_internal_token else str(exc),
+            )
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "status_code": None,
+                    "response_text_preview": "POS raw summary request failed.",
+                    "request_url": request_url,
+                    "token_length": len(settings.pos_internal_token),
+                    "token_preview": _token_preview(settings.pos_internal_token),
+                },
+            )
+
+    return {
+        "status_code": response.status_code,
+        "response_text_preview": response.text[:300],
+        "request_url": request_url,
+        "token_length": len(settings.pos_internal_token),
+        "token_preview": _token_preview(settings.pos_internal_token),
     }
 
 

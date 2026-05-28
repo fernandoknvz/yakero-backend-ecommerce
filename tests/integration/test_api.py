@@ -1,3 +1,6 @@
+import httpx
+
+
 def test_healthcheck(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -563,6 +566,38 @@ def test_debug_pos_config_is_internal_and_masks_token(client, monkeypatch):
     assert payload["internal_bootstrap_token_length"] == len("internal-secret")
     assert "pos-token-super-secret" not in str(payload)
     assert "internal-secret" not in str(payload)
+
+
+def test_debug_pos_raw_summary_uses_direct_httpx_and_masks_token(client, monkeypatch):
+    from app.infrastructure.api.routers import debug as debug_router_module
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://posdev.tehagolaweb.cl/api/external/catalog/summary"
+        assert request.headers["X-Internal-Token"] == "pos-token-super-secret"
+        return httpx.Response(403, text="forbidden detail from pos")
+
+    real_async_client = httpx.AsyncClient
+
+    def fake_async_client(*args, **kwargs):
+        return real_async_client(transport=httpx.MockTransport(handler), timeout=kwargs.get("timeout"))
+
+    monkeypatch.setattr(debug_router_module.settings, "internal_bootstrap_token", "internal-secret")
+    monkeypatch.setattr(debug_router_module.settings, "pos_internal_token", "pos-token-super-secret")
+    monkeypatch.setattr(debug_router_module.httpx, "AsyncClient", fake_async_client)
+
+    response = client.get(
+        "/api/v1/debug/pos/raw-summary",
+        headers={"X-Internal-Token": "internal-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status_code"] == 403
+    assert payload["response_text_preview"] == "forbidden detail from pos"
+    assert payload["request_url"] == "https://posdev.tehagolaweb.cl/api/external/catalog/summary"
+    assert payload["token_length"] == len("pos-token-super-secret")
+    assert payload["token_preview"] == "pos-...cret"
+    assert "pos-token-super-secret" not in str(payload)
 
 
 def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, admin_header):
