@@ -21,6 +21,24 @@ def build_async_engine_config(database_url: str, **engine_options: Any) -> tuple
     return url, options
 
 
+def database_connection_diagnostics(database_url: str, ssl_enabled: bool) -> dict[str, Any]:
+    url = make_url(database_url)
+    return {
+        "driver": url.drivername,
+        "host": url.host,
+        "port": url.port,
+        "database": url.database,
+        "user": url.username,
+        "query": dict(url.query),
+        "ssl_enabled": ssl_enabled,
+    }
+
+
+def has_ssl_context(engine_options: dict[str, Any]) -> bool:
+    connect_args = engine_options.get("connect_args") or {}
+    return "ssl" in connect_args
+
+
 def _requires_ssl(url: URL) -> bool:
     return any(_is_truthy(url.query.get(key)) for key in SSL_QUERY_KEYS)
 

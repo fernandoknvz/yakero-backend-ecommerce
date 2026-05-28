@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database.dev_seed import DEMO_COUPON_CODE, DEMO_USER_EMAIL, seed_dev_data
+from ...database.connection import build_async_engine_config
 from ...database.models.orm_models import CategoryORM, CouponORM, ProductORM, UserORM
 from ...database.repositories.sql_repositories import SQLOrderRepository
 from ...database.session import AsyncSessionLocal, get_db
@@ -93,7 +94,8 @@ def _upgrade_head_sync() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     alembic_ini = repo_root / "alembic.ini"
     config = AlembicConfig(str(alembic_ini))
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+    database_url, _ = build_async_engine_config(settings.database_url)
+    config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
     command.upgrade(config, "head")
 
 
