@@ -538,6 +538,33 @@ def test_debug_pos_catalog_summary_uses_pos_client(client, monkeypatch):
     assert payload["summary"] == {"products": 12, "promotions": 3, "branches": 2}
 
 
+def test_debug_pos_config_is_internal_and_masks_token(client, monkeypatch):
+    from app.infrastructure.api.routers import debug as debug_router_module
+
+    monkeypatch.setattr(debug_router_module.settings, "internal_bootstrap_token", "internal-secret")
+    monkeypatch.setattr(debug_router_module.settings, "pos_api_base_url", "https://pos.test")
+    monkeypatch.setattr(debug_router_module.settings, "pos_internal_token", "pos-token-super-secret")
+
+    unauthorized = client.get("/api/v1/debug/config/pos")
+    assert unauthorized.status_code == 401
+
+    response = client.get(
+        "/api/v1/debug/config/pos",
+        headers={"X-Internal-Token": "internal-secret"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["POS_API_BASE_URL"] == "https://pos.test"
+    assert payload["pos_internal_token_configured"] is True
+    assert payload["pos_internal_token_length"] == len("pos-token-super-secret")
+    assert payload["pos_internal_token_preview"] == "pos-...cret"
+    assert payload["internal_bootstrap_token_configured"] is True
+    assert payload["internal_bootstrap_token_length"] == len("internal-secret")
+    assert "pos-token-super-secret" not in str(payload)
+    assert "internal-secret" not in str(payload)
+
+
 def test_debug_preference_payload_without_email_omits_payer(client, monkeypatch, admin_header):
     from app.infrastructure.api.routers import payments as payments_router_module
 

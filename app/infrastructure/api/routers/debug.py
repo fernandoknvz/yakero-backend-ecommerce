@@ -113,6 +113,22 @@ async def debug_pos_catalog_summary(
     }
 
 
+@router.get("/config/pos")
+async def debug_pos_config(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _ensure_debug_allowed(x_internal_token)
+
+    return {
+        "POS_API_BASE_URL": settings.pos_api_base_url,
+        "pos_internal_token_configured": bool(settings.pos_internal_token),
+        "pos_internal_token_length": len(settings.pos_internal_token),
+        "pos_internal_token_preview": _token_preview(settings.pos_internal_token),
+        "internal_bootstrap_token_configured": bool(settings.internal_bootstrap_token),
+        "internal_bootstrap_token_length": len(settings.internal_bootstrap_token),
+    }
+
+
 def _ensure_debug_allowed(x_internal_token: str | None) -> None:
     if not settings.internal_bootstrap_token:
         raise HTTPException(status_code=503, detail="INTERNAL_BOOTSTRAP_TOKEN no configurado.")
@@ -126,6 +142,14 @@ def _token_prefix(token: str) -> str:
     if "-" in token:
         return token.split("-", 1)[0]
     return token[:7]
+
+
+def _token_preview(token: str) -> str:
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return "*" * len(token)
+    return f"{token[:4]}...{token[-4:]}"
 
 
 def _mercadopago_config_warnings(
