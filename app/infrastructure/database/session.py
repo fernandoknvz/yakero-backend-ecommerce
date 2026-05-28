@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 engine_kwargs = {
     "echo": settings.debug,
-    "pool_pre_ping": True,
+    "pool_pre_ping": False,
 }
 if settings.testing:
     engine_kwargs["poolclass"] = NullPool

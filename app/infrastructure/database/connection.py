@@ -19,18 +19,20 @@ def build_async_engine_config(
     url = make_url(database_url)
     options = dict(engine_options)
 
-    if url.drivername == "mysql+aiomysql" and _requires_ssl(url):
-        url = url.difference_update_query(SSL_QUERY_KEYS)
-        connect_args = dict(options.get("connect_args") or {})
-        connect_args.setdefault(
-            "ssl",
-            build_ssl_context(
-                ca_cert=ca_cert,
-                ssl_insecure=ssl_insecure,
-                is_production=is_production,
-            ),
-        )
-        options["connect_args"] = connect_args
+    if url.drivername == "mysql+aiomysql":
+        options["pool_pre_ping"] = False
+        if _requires_ssl(url):
+            url = url.difference_update_query(SSL_QUERY_KEYS)
+            connect_args = dict(options.get("connect_args") or {})
+            connect_args.setdefault(
+                "ssl",
+                build_ssl_context(
+                    ca_cert=ca_cert,
+                    ssl_insecure=ssl_insecure,
+                    is_production=is_production,
+                ),
+            )
+            options["connect_args"] = connect_args
 
     return url, options
 

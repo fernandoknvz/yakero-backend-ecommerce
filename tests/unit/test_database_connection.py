@@ -25,7 +25,16 @@ def test_mysql_aiomysql_ssl_true_adds_ssl_context_and_strips_query_flag():
     assert "ssl" not in url.query
     assert isinstance(options["connect_args"]["ssl"], SSLContext)
     assert has_ssl_context(options)
-    assert options["pool_pre_ping"] is True
+    assert options["pool_pre_ping"] is False
+
+
+def test_mysql_aiomysql_disables_pool_pre_ping_for_async_driver():
+    _, options = build_async_engine_config(
+        "mysql+aiomysql://user:pass@mysql.test:3306/yakero",
+        pool_pre_ping=True,
+    )
+
+    assert options["pool_pre_ping"] is False
 
 
 def test_mysql_aiomysql_ssl_uses_aiven_ca_cert(monkeypatch):
