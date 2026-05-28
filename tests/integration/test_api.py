@@ -806,6 +806,53 @@ def test_internal_bootstrap_requires_valid_token(client, monkeypatch):
     assert response.json()["detail"] == "Token interno invalido."
 
 
+def test_internal_bootstrap_db_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.post("/api/v1/internal/bootstrap-db")
+    invalid = client.post("/api/v1/internal/bootstrap-db", headers={"X-Internal-Token": "wrong"})
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+    assert missing.json()["detail"] == "Forbidden"
+    assert invalid.json()["detail"] == "Forbidden"
+
+
+def test_internal_bootstrap_db_runs_migrations(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    state = {"migrated": False}
+
+    async def fake_run_alembic_upgrade():
+        state["migrated"] = True
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_run_alembic_upgrade", fake_run_alembic_upgrade)
+
+    response = client.post("/api/v1/internal/bootstrap-db", headers={"X-Internal-Token": "secret-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "message": "Database migrated successfully"}
+    assert state["migrated"] is True
+
+
+def test_internal_bootstrap_db_returns_safe_error(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_run_alembic_upgrade():
+        raise RuntimeError("secret connection detail")
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_run_alembic_upgrade", fake_run_alembic_upgrade)
+
+    response = client.post("/api/v1/internal/bootstrap-db", headers={"X-Internal-Token": "secret-token"})
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Database migration failed."
+
+
 def test_internal_bootstrap_is_idempotent(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

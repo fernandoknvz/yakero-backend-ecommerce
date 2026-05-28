@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import secrets
 from pathlib import Path
 
 from alembic import command
@@ -21,6 +23,7 @@ from ....domain.exceptions import DomainError
 from ....domain.models.entities import User
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/internal", tags=["POS Interno"])
 
 
@@ -77,6 +80,20 @@ async def bootstrap_staging(
     }
 
 
+# Endpoint temporal de mantenimiento para Render Free: ejecutar migraciones sin Shell.
+@router.post("/bootstrap-db")
+async def bootstrap_database(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    try:
+        await _run_alembic_upgrade()
+    except Exception:
+        logger.warning("Database migration bootstrap failed.")
+        raise HTTPException(status_code=500, detail="Database migration failed.")
+    return {"ok": True, "message": "Database migrated successfully"}
+
+
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
     if settings.is_production and not settings.debug:
         raise HTTPException(status_code=403, detail="Bootstrap deshabilitado en produccion.")
@@ -84,6 +101,13 @@ def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
         raise HTTPException(status_code=503, detail="INTERNAL_BOOTSTRAP_TOKEN no configurado.")
     if not x_internal_token or x_internal_token != settings.internal_bootstrap_token:
         raise HTTPException(status_code=401, detail="Token interno invalido.")
+
+
+def _ensure_migration_bootstrap_allowed(x_internal_token: str | None) -> None:
+    if not settings.internal_bootstrap_token:
+        raise HTTPException(status_code=503, detail="INTERNAL_BOOTSTRAP_TOKEN no configurado.")
+    if not x_internal_token or not secrets.compare_digest(x_internal_token, settings.internal_bootstrap_token):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 async def _run_alembic_upgrade() -> None:
