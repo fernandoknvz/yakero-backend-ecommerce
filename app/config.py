@@ -1,10 +1,21 @@
-from functools import lru_cache
 import json
+from functools import lru_cache
 from urllib.parse import urlparse
 from typing import Any
 
 from pydantic import model_validator, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://ecommerce.fernandoolgueadev.cl",
+]
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().rstrip("/")
 
 
 class Settings(BaseSettings):
@@ -46,7 +57,7 @@ class Settings(BaseSettings):
     store_lon: float = -70.5799
 
     # CORS
-    allowed_origins: list[str] = ["http://localhost:5173", "https://yakero.cl"]
+    allowed_origins: list[str] = DEFAULT_ALLOWED_ORIGINS.copy()
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -62,10 +73,22 @@ class Settings(BaseSettings):
             if value.strip().startswith("["):
                 parsed = json.loads(value)
                 if isinstance(parsed, list):
-                    return [str(origin).strip() for origin in parsed if str(origin).strip()]
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+                    return [
+                        _normalize_origin(str(origin))
+                        for origin in parsed
+                        if _normalize_origin(str(origin))
+                    ]
+            return [
+                _normalize_origin(origin)
+                for origin in value.split(",")
+                if _normalize_origin(origin)
+            ]
         if isinstance(value, list):
-            return value
+            return [
+                _normalize_origin(str(origin))
+                for origin in value
+                if _normalize_origin(str(origin))
+            ]
         return cls.model_fields["allowed_origins"].default
 
     @field_validator("debug", "testing", mode="before")
@@ -101,6 +124,7 @@ class Settings(BaseSettings):
             raise ValueError("JWT_EXPIRE_MINUTES debe ser mayor que 0.")
         if not self.allowed_origins:
             raise ValueError("ALLOWED_ORIGINS no puede estar vacio.")
+        self.allowed_origins = self._build_cors_origins()
         if self.is_production:
             if self.debug:
                 raise ValueError("DEBUG debe estar deshabilitado en produccion.")
@@ -109,6 +133,20 @@ class Settings(BaseSettings):
             if "*" in self.allowed_origins:
                 raise ValueError("CORS wildcard no esta permitido en produccion.")
         return self
+
+    def _build_cors_origins(self) -> list[str]:
+        origins = [
+            *DEFAULT_ALLOWED_ORIGINS,
+            *self.allowed_origins,
+            self.frontend_public_url,
+            self.app_base_url,
+        ]
+        normalized_origins = []
+        for origin in origins:
+            normalized = _normalize_origin(origin)
+            if normalized and normalized not in normalized_origins:
+                normalized_origins.append(normalized)
+        return normalized_origins
 
     def public_runtime_diagnostics(self) -> dict[str, Any]:
         database = urlparse(self.database_url)
