@@ -143,6 +143,7 @@ class PromotionORM(Base):
     __tablename__ = "promotions"
 
     id = Column(Integer, primary_key=True, index=True)
+    external_code = Column(String(100), unique=True, nullable=True, index=True)
     name = Column(String(200), nullable=False)
     description = Column(Text)
     promotion_type = Column(String(50), nullable=False)

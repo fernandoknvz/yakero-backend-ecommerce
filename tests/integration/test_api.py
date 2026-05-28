@@ -853,6 +853,62 @@ def test_internal_bootstrap_db_returns_safe_error(client, monkeypatch):
     assert response.json()["detail"] == "Database migration failed."
 
 
+def test_internal_pos_catalog_sync_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.post("/api/v1/internal/pos/catalog-sync")
+    invalid = client.post("/api/v1/internal/pos/catalog-sync", headers={"X-Internal-Token": "wrong"})
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    class FakeSyncResult:
+        def to_dict(self):
+            return {
+                "products_created": 2,
+                "products_updated": 1,
+                "promotions_created": 1,
+                "promotions_updated": 0,
+                "categories_created": 1,
+                "categories_updated": 0,
+                "skipped": 0,
+                "errors": [],
+            }
+
+    class FakeSyncService:
+        def __init__(self, _db):
+            pass
+
+        async def sync(self):
+            return FakeSyncResult()
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "PosCatalogSyncService", FakeSyncService)
+
+    response = client.post("/api/v1/internal/pos/catalog-sync", headers={"X-Internal-Token": "secret-token"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "summary": {
+            "products_created": 2,
+            "products_updated": 1,
+            "promotions_created": 1,
+            "promotions_updated": 0,
+            "categories_created": 1,
+            "categories_updated": 0,
+            "skipped": 0,
+            "errors": [],
+        },
+    }
+
+
 def test_internal_bootstrap_is_idempotent(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

@@ -6,14 +6,17 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config as AlembicConfig
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database.dev_seed import DEMO_COUPON_CODE, DEMO_USER_EMAIL, seed_dev_data
 from ...database.connection import build_async_engine_config
 from ...database.models.orm_models import CategoryORM, CouponORM, ProductORM, UserORM
+from ...database.pos_catalog_sync import PosCatalogSyncService
 from ...database.repositories.sql_repositories import SQLOrderRepository
 from ...database.session import AsyncSessionLocal, get_db
+from ...clients import PosClientError
 from ..errors import domain_error_to_http
 from ....application.dtos.schemas import OrderOut, PosOrderOut, PosStatusUpdateInput
 from ....application.use_cases.orders.order_use_cases import UpdateOrderStatusUseCase
@@ -92,6 +95,35 @@ async def bootstrap_database(
         logger.warning("Database migration bootstrap failed.")
         raise HTTPException(status_code=500, detail="Database migration failed.")
     return {"ok": True, "message": "Database migrated successfully"}
+
+
+@router.post("/pos/catalog-sync")
+async def sync_pos_catalog(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    logger.info("Manual POS catalog sync requested.")
+    try:
+        result = await PosCatalogSyncService(db).sync()
+    except PosClientError as exc:
+        logger.warning(
+            "Manual POS catalog sync failed with POS client error status_code=%s provider_status_code=%s message=%s",
+            exc.status_code,
+            exc.provider_status_code,
+            exc.message,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"ok": False, "error": exc.message},
+        )
+    except Exception as exc:
+        logger.exception(
+            "Manual POS catalog sync failed exception_type=%s",
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail="POS catalog sync failed.")
+    return {"ok": True, "summary": result.to_dict()}
 
 
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
