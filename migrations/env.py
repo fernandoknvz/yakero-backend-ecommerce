@@ -9,7 +9,12 @@ from app.infrastructure.database.connection import build_async_engine_config
 from app.config import settings
 
 config = context.config
-database_url, engine_options = build_async_engine_config(settings.database_url)
+database_url, engine_options = build_async_engine_config(
+    settings.database_url,
+    ca_cert=settings.aiven_ca_cert,
+    ssl_insecure=settings.aiven_ssl_insecure,
+    is_production=settings.is_production,
+)
 config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
 
 if config.config_file_name is not None:

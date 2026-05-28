@@ -94,7 +94,12 @@ def _upgrade_head_sync() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     alembic_ini = repo_root / "alembic.ini"
     config = AlembicConfig(str(alembic_ini))
-    database_url, _ = build_async_engine_config(settings.database_url)
+    database_url, _ = build_async_engine_config(
+        settings.database_url,
+        ca_cert=settings.aiven_ca_cert,
+        ssl_insecure=settings.aiven_ssl_insecure,
+        is_production=settings.is_production,
+    )
     config.set_main_option("sqlalchemy.url", database_url.render_as_string(hide_password=False))
     command.upgrade(config, "head")
 

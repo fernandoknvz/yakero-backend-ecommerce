@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     # Database (aiomysql driver for async SQLAlchemy)
     database_url: str = "mysql+aiomysql://user:pass@localhost:3306/yakero_ecommerce"
+    aiven_ca_cert: str = ""
+    aiven_ssl_insecure: bool = False
 
     # JWT
     jwt_secret: str = "CHANGE_THIS_IN_PRODUCTION"
@@ -102,6 +104,13 @@ class Settings(BaseSettings):
                 return False
         return value
 
+    @field_validator("aiven_ca_cert", mode="before")
+    @classmethod
+    def parse_aiven_ca_cert(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            return ""
+        return value.strip().replace("\\n", "\n")
+
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"prod", "production"}
@@ -132,6 +141,8 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET inseguro para produccion.")
             if "*" in self.allowed_origins:
                 raise ValueError("CORS wildcard no esta permitido en produccion.")
+            if self.aiven_ssl_insecure:
+                raise ValueError("AIVEN_SSL_INSECURE no esta permitido en produccion.")
         return self
 
     def _build_cors_origins(self) -> list[str]:
@@ -156,6 +167,8 @@ class Settings(BaseSettings):
             "api_v1_prefix": self.api_v1_prefix,
             "database_host": database.hostname,
             "database_name": database.path.lstrip("/"),
+            "database_ssl_ca_configured": bool(self.aiven_ca_cert),
+            "database_ssl_insecure": self.aiven_ssl_insecure,
             "allowed_origins": self.allowed_origins,
             "jwt_insecure": self.has_insecure_jwt_secret,
         }

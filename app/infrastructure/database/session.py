@@ -15,10 +15,21 @@ engine_kwargs = {
 if settings.testing:
     engine_kwargs["poolclass"] = NullPool
 
-engine_url, engine_kwargs = build_async_engine_config(settings.database_url, **engine_kwargs)
+engine_url, engine_kwargs = build_async_engine_config(
+    settings.database_url,
+    ca_cert=settings.aiven_ca_cert,
+    ssl_insecure=settings.aiven_ssl_insecure,
+    is_production=settings.is_production,
+    **engine_kwargs,
+)
 logger.info(
     "Creating async database engine: %s",
-    database_connection_diagnostics(settings.database_url, has_ssl_context(engine_kwargs)),
+    database_connection_diagnostics(
+        settings.database_url,
+        ssl_enabled=has_ssl_context(engine_kwargs),
+        ca_cert_configured=bool(settings.aiven_ca_cert),
+        ssl_insecure=settings.aiven_ssl_insecure,
+    ),
 )
 engine = create_async_engine(engine_url, **engine_kwargs)
 
