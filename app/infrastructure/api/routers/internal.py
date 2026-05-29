@@ -123,7 +123,7 @@ async def sync_pos_catalog(
             type(exc).__name__,
         )
         raise HTTPException(status_code=500, detail="POS catalog sync failed.")
-    return {"ok": True, "summary": result.to_dict()}
+    return {"ok": True, **result.to_dict()}
 
 
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:

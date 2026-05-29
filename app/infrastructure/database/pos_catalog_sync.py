@@ -20,11 +20,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class PosCatalogEntitySyncResult:
+    received: int = 0
+    created: int = 0
+    updated: int = 0
+    deactivated: int = 0
+
+
+@dataclass
 class PosCatalogSyncResult:
-    products_created: int = 0
-    products_updated: int = 0
-    promotions_created: int = 0
-    promotions_updated: int = 0
+    source: str = "pos"
+    products: PosCatalogEntitySyncResult = field(default_factory=PosCatalogEntitySyncResult)
+    promotions: PosCatalogEntitySyncResult = field(default_factory=PosCatalogEntitySyncResult)
+    branches: PosCatalogEntitySyncResult = field(default_factory=PosCatalogEntitySyncResult)
     categories_created: int = 0
     categories_updated: int = 0
     skipped: int = 0
@@ -45,12 +53,25 @@ class PosCatalogSyncService:
 
         products_payload = await self._client.get_products()
         promotions_payload = await self._client.get_promotions()
+        branches_payload = await self._client.get_branches()
         products = _extract_items(products_payload, "products")
         promotions = _extract_items(promotions_payload, "promotions")
+        branches = _extract_items(branches_payload, "branches")
+        result.products.received = len(products)
+        result.promotions.received = len(promotions)
+        result.branches.received = len(branches)
+
+        logger.info(
+            "POS catalog sync payload received products=%s promotions=%s branches=%s",
+            result.products.received,
+            result.promotions.received,
+            result.branches.received,
+        )
 
         categories_by_slug = await self._load_categories_by_slug()
         products_by_sku = await self._load_products_by_sku()
         promotions_by_external_code = await self._load_promotions_by_external_code()
+        received_product_skus: set[str] = set()
 
         for index, raw_product in enumerate(products, start=1):
             try:
@@ -59,6 +80,7 @@ class PosCatalogSyncService:
                     categories_by_slug,
                     products_by_sku,
                     result,
+                    received_product_skus,
                     index,
                 )
                 if not synced:
@@ -68,6 +90,8 @@ class PosCatalogSyncService:
                 message = f"product[{index}] mapping failed: {type(exc).__name__}"
                 result.errors.append(message)
                 logger.warning("%s", message)
+
+        self._deactivate_missing_products(products_by_sku, received_product_skus, result)
 
         for index, raw_promotion in enumerate(promotions, start=1):
             try:
@@ -87,13 +111,18 @@ class PosCatalogSyncService:
 
         await self._session.flush()
         logger.info(
-            "POS catalog sync finished products_created=%s products_updated=%s "
-            "promotions_created=%s promotions_updated=%s categories_created=%s "
-            "categories_updated=%s skipped=%s errors=%s",
-            result.products_created,
-            result.products_updated,
-            result.promotions_created,
-            result.promotions_updated,
+            "POS catalog sync finished products_received=%s products_created=%s "
+            "products_updated=%s products_deactivated=%s promotions_received=%s "
+            "promotions_created=%s promotions_updated=%s branches_received=%s "
+            "categories_created=%s categories_updated=%s skipped=%s errors=%s",
+            result.products.received,
+            result.products.created,
+            result.products.updated,
+            result.products.deactivated,
+            result.promotions.received,
+            result.promotions.created,
+            result.promotions.updated,
+            result.branches.received,
             result.categories_created,
             result.categories_updated,
             result.skipped,
@@ -107,12 +136,14 @@ class PosCatalogSyncService:
         categories_by_slug: dict[str, CategoryORM],
         products_by_sku: dict[str, ProductORM],
         result: PosCatalogSyncResult,
+        received_product_skus: set[str],
         index: int,
     ) -> bool:
         sku = _string_value(raw, "sku", "SKU", "code", "external_code")
         if not sku:
             result.errors.append(f"product[{index}] skipped: missing sku")
             return False
+        received_product_skus.add(sku)
 
         category_data = _category_data(raw)
         category_slug = _category_slug(category_data, raw)
@@ -158,10 +189,13 @@ class PosCatalogSyncService:
             product = ProductORM(**product_values)
             self._session.add(product)
             products_by_sku[sku] = product
-            result.products_created += 1
+            result.products.created += 1
         else:
+            was_available = bool(product.is_available)
             _assign(product, product_values)
-            result.products_updated += 1
+            result.products.updated += 1
+            if was_available and not product.is_available:
+                result.products.deactivated += 1
         return True
 
     async def _sync_promotion(
@@ -197,11 +231,26 @@ class PosCatalogSyncService:
             promotion = PromotionORM(**promotion_values)
             self._session.add(promotion)
             promotions_by_external_code[external_code] = promotion
-            result.promotions_created += 1
+            result.promotions.created += 1
         else:
+            was_active = bool(promotion.is_active)
             _assign(promotion, promotion_values)
-            result.promotions_updated += 1
+            result.promotions.updated += 1
+            if was_active and not promotion.is_active:
+                result.promotions.deactivated += 1
         return True
+
+    def _deactivate_missing_products(
+        self,
+        products_by_sku: dict[str, ProductORM],
+        received_product_skus: set[str],
+        result: PosCatalogSyncResult,
+    ) -> None:
+        for sku, product in products_by_sku.items():
+            if sku in received_product_skus or not product.is_available:
+                continue
+            product.is_available = False
+            result.products.deactivated += 1
 
     async def _load_categories_by_slug(self) -> dict[str, CategoryORM]:
         result = await self._session.execute(select(CategoryORM))

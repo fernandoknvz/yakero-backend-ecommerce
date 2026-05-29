@@ -58,11 +58,10 @@ class PosClient:
         headers = {"X-Internal-Token": self._internal_token}
 
         logger.info(
-            "POS catalog request started url=%s header_names=%s token_length=%s token_preview=%s",
+            "POS catalog request started url=%s header_names=%s token_configured=%s",
             self._full_url(path),
             list(headers.keys()),
-            len(self._internal_token),
-            self._token_preview(),
+            bool(self._internal_token),
         )
         async with httpx.AsyncClient(
             base_url=self._base_url,
@@ -141,10 +140,3 @@ class PosClient:
 
     def _full_url(self, path: str) -> str:
         return f"{self._base_url}{path}"
-
-    def _token_preview(self) -> str:
-        if not self._internal_token:
-            return ""
-        if len(self._internal_token) <= 8:
-            return "*" * len(self._internal_token)
-        return f"{self._internal_token[:4]}...{self._internal_token[-4:]}"

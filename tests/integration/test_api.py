@@ -933,10 +933,25 @@ def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     class FakeSyncResult:
         def to_dict(self):
             return {
-                "products_created": 2,
-                "products_updated": 1,
-                "promotions_created": 1,
-                "promotions_updated": 0,
+                "source": "pos",
+                "products": {
+                    "received": 3,
+                    "created": 2,
+                    "updated": 1,
+                    "deactivated": 0,
+                },
+                "promotions": {
+                    "received": 1,
+                    "created": 1,
+                    "updated": 0,
+                    "deactivated": 0,
+                },
+                "branches": {
+                    "received": 0,
+                    "created": 0,
+                    "updated": 0,
+                    "deactivated": 0,
+                },
                 "categories_created": 1,
                 "categories_updated": 0,
                 "skipped": 0,
@@ -958,16 +973,29 @@ def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {
         "ok": True,
-        "summary": {
-            "products_created": 2,
-            "products_updated": 1,
-            "promotions_created": 1,
-            "promotions_updated": 0,
-            "categories_created": 1,
-            "categories_updated": 0,
-            "skipped": 0,
-            "errors": [],
+        "source": "pos",
+        "products": {
+            "received": 3,
+            "created": 2,
+            "updated": 1,
+            "deactivated": 0,
         },
+        "promotions": {
+            "received": 1,
+            "created": 1,
+            "updated": 0,
+            "deactivated": 0,
+        },
+        "branches": {
+            "received": 0,
+            "created": 0,
+            "updated": 0,
+            "deactivated": 0,
+        },
+        "categories_created": 1,
+        "categories_updated": 0,
+        "skipped": 0,
+        "errors": [],
     }
 
 
