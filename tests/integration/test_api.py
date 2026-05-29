@@ -989,6 +989,61 @@ def test_internal_pos_catalog_audit_returns_summary(client, monkeypatch):
     assert response.json()["promotions"]["without_image"] == 1
 
 
+def test_internal_pos_catalog_audit_details_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.get("/api/v1/internal/pos/catalog-audit/details")
+    invalid = client.get("/api/v1/internal/pos/catalog-audit/details", headers={"X-Internal-Token": "wrong"})
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_pos_catalog_audit_details_returns_detail_lists(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    class FakeAuditService:
+        def __init__(self, _db):
+            pass
+
+        async def details(self):
+            return {
+                "products_without_price": [
+                    {
+                        "sku": "POS-001",
+                        "name": "Producto sin precio",
+                        "category": "Rolls",
+                        "subcategory": None,
+                        "price": 0,
+                        "is_available": True,
+                    }
+                ],
+                "products_without_image": [],
+                "promotions_without_image": [
+                    {
+                        "code": "PROMO-1",
+                        "name": "Promo sin imagen",
+                        "price": 9990,
+                        "is_active": True,
+                    }
+                ],
+            }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "PosCatalogAuditService", FakeAuditService)
+
+    response = client.get(
+        "/api/v1/internal/pos/catalog-audit/details",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["products_without_price"][0]["sku"] == "POS-001"
+    assert response.json()["promotions_without_image"][0]["code"] == "PROMO-1"
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 
@@ -1059,6 +1114,32 @@ def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
         "skipped": 0,
         "errors": [],
     }
+
+
+def test_internal_pos_catalog_sync_returns_controlled_pos_error(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    class FakeSyncService:
+        def __init__(self, _db):
+            pass
+
+        async def sync(self):
+            raise internal_router_module.PosClientError(
+                "POS rejected token secret-token and pos-token",
+                status_code=403,
+                provider_status_code=403,
+            )
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module.settings, "pos_internal_token", "pos-token")
+    monkeypatch.setattr(internal_router_module, "PosCatalogSyncService", FakeSyncService)
+
+    response = client.post("/api/v1/internal/pos/catalog-sync", headers={"X-Internal-Token": "secret-token"})
+
+    assert response.status_code == 403
+    assert response.json() == {"ok": False, "error": "POS rejected token *** and ***"}
+    assert "secret-token" not in str(response.json())
+    assert "pos-token" not in str(response.json())
 
 
 def test_internal_bootstrap_is_idempotent(client, monkeypatch):

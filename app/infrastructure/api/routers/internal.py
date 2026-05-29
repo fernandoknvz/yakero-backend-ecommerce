@@ -104,19 +104,20 @@ async def sync_pos_catalog(
     db: AsyncSession = Depends(get_db),
 ):
     _ensure_migration_bootstrap_allowed(x_internal_token)
-    logger.info("Manual POS catalog sync requested.")
+    logger.info("POS catalog sync started.")
     try:
         result = await PosCatalogSyncService(db).sync()
     except PosClientError as exc:
+        safe_message = _safe_log_message(exc.message)
         logger.warning(
             "Manual POS catalog sync failed with POS client error status_code=%s provider_status_code=%s message=%s",
             exc.status_code,
             exc.provider_status_code,
-            exc.message,
+            safe_message,
         )
         return JSONResponse(
             status_code=exc.status_code,
-            content={"ok": False, "error": exc.message},
+            content={"ok": False, "error": safe_message},
         )
     except Exception as exc:
         logger.exception(
@@ -124,7 +125,9 @@ async def sync_pos_catalog(
             type(exc).__name__,
         )
         raise HTTPException(status_code=500, detail="POS catalog sync failed.")
-    return {"ok": True, **result.to_dict()}
+    summary = result.to_dict()
+    _log_catalog_sync_success(summary)
+    return {"ok": True, **summary}
 
 
 @router.get("/pos/catalog-audit")
@@ -135,6 +138,16 @@ async def audit_pos_catalog(
     _ensure_migration_bootstrap_allowed(x_internal_token)
     logger.info("POS catalog audit requested.")
     return await PosCatalogAuditService(db).audit()
+
+
+@router.get("/pos/catalog-audit/details")
+async def audit_pos_catalog_details(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    logger.info("POS catalog audit details requested.")
+    return await PosCatalogAuditService(db).details()
 
 
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
@@ -151,6 +164,37 @@ def _ensure_migration_bootstrap_allowed(x_internal_token: str | None) -> None:
         raise HTTPException(status_code=503, detail="INTERNAL_BOOTSTRAP_TOKEN no configurado.")
     if not x_internal_token or not secrets.compare_digest(x_internal_token, settings.internal_bootstrap_token):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+
+def _log_catalog_sync_success(summary: dict) -> None:
+    products = summary.get("products", {})
+    promotions = summary.get("promotions", {})
+    branches = summary.get("branches", {})
+    logger.info(
+        "POS catalog sync finished products_received=%s products_created=%s products_updated=%s "
+        "products_deactivated=%s promotions_received=%s promotions_created=%s promotions_updated=%s "
+        "branches_received=%s categories_created=%s categories_updated=%s skipped=%s errors=%s",
+        products.get("received", 0),
+        products.get("created", 0),
+        products.get("updated", 0),
+        products.get("deactivated", 0),
+        promotions.get("received", 0),
+        promotions.get("created", 0),
+        promotions.get("updated", 0),
+        branches.get("received", 0),
+        summary.get("categories_created", 0),
+        summary.get("categories_updated", 0),
+        summary.get("skipped", 0),
+        len(summary.get("errors", [])),
+    )
+
+
+def _safe_log_message(message: str) -> str:
+    safe = message
+    for secret in (settings.internal_bootstrap_token, settings.pos_internal_token):
+        if secret:
+            safe = safe.replace(secret, "***")
+    return safe
 
 
 async def _run_alembic_upgrade() -> None:
