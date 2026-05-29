@@ -927,6 +927,68 @@ def test_internal_pos_catalog_sync_requires_valid_token(client, monkeypatch):
     assert invalid.status_code == 403
 
 
+def test_internal_pos_catalog_audit_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.get("/api/v1/internal/pos/catalog-audit")
+    invalid = client.get("/api/v1/internal/pos/catalog-audit", headers={"X-Internal-Token": "wrong"})
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_pos_catalog_audit_returns_summary(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    class FakeAuditService:
+        def __init__(self, _db):
+            pass
+
+        async def audit(self):
+            return {
+                "ok": True,
+                "products": {
+                    "total": 183,
+                    "active": 183,
+                    "available_for_ecommerce": 183,
+                    "without_price": 0,
+                    "without_category": 0,
+                    "without_sku": 0,
+                    "without_image": 12,
+                    "duplicate_skus": [],
+                    "duplicate_pos_product_ids": [],
+                },
+                "promotions": {
+                    "total": 6,
+                    "active": 6,
+                    "without_price": 0,
+                    "without_code": 0,
+                    "without_image": 1,
+                    "duplicate_codes": [],
+                },
+                "categories": {
+                    "total": 4,
+                    "names": ["Bebidas", "Handrolls", "Rolls", "Tablas"],
+                },
+                "branches": {
+                    "total": 0,
+                    "active": 0,
+                },
+            }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "PosCatalogAuditService", FakeAuditService)
+
+    response = client.get("/api/v1/internal/pos/catalog-audit", headers={"X-Internal-Token": "secret-token"})
+
+    assert response.status_code == 200
+    assert response.json()["products"]["total"] == 183
+    assert response.json()["products"]["without_image"] == 12
+    assert response.json()["promotions"]["without_image"] == 1
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

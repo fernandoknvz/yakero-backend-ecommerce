@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...database.dev_seed import DEMO_COUPON_CODE, DEMO_USER_EMAIL, seed_dev_data
 from ...database.connection import build_async_engine_config
 from ...database.models.orm_models import CategoryORM, CouponORM, ProductORM, UserORM
+from ...database.pos_catalog_audit import PosCatalogAuditService
 from ...database.pos_catalog_sync import PosCatalogSyncService
 from ...database.repositories.sql_repositories import SQLOrderRepository
 from ...database.session import AsyncSessionLocal, get_db
@@ -124,6 +125,16 @@ async def sync_pos_catalog(
         )
         raise HTTPException(status_code=500, detail="POS catalog sync failed.")
     return {"ok": True, **result.to_dict()}
+
+
+@router.get("/pos/catalog-audit")
+async def audit_pos_catalog(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    logger.info("POS catalog audit requested.")
+    return await PosCatalogAuditService(db).audit()
 
 
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
