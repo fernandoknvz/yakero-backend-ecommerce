@@ -118,6 +118,22 @@ def _product(**overrides):
     return ProductORM(**values)
 
 
+def _promotion(**overrides):
+    values = {
+        "external_code": "PROMO-1",
+        "name": "Promo antigua",
+        "description": "Antes",
+        "promotion_type": "bundle",
+        "value": Decimal("5000"),
+        "image_url": None,
+        "is_active": True,
+        "starts_at": None,
+        "ends_at": None,
+    }
+    values.update(overrides)
+    return PromotionORM(**values)
+
+
 def _raw_product(**overrides):
     values = {
         "sku": "SKU-1",
@@ -133,6 +149,20 @@ def _raw_product(**overrides):
         "available_for_ecommerce": True,
         "kitchen_destination": "sushi",
         "sort_order": 3,
+    }
+    values.update(overrides)
+    return values
+
+
+def _raw_promotion(**overrides):
+    values = {
+        "external_code": "PROMO-1",
+        "name": "Promo actualizada",
+        "description": "Ahora",
+        "promotion_type": "bundle",
+        "value": "8990",
+        "image_url": "https://img.test/promo.png",
+        "available_for_ecommerce": True,
     }
     values.update(overrides)
     return values
@@ -220,3 +250,113 @@ async def test_pos_catalog_sync_marks_unavailable_product_inactive():
 
     assert result.products.deactivated == 1
     assert product.is_available is False
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_preserves_existing_product_image_when_pos_image_is_empty():
+    session = FakeSession()
+    session.categories.append(_category())
+    product = _product(image_url="https://img.test/existing.png")
+    session.products.append(product)
+    client = FakePosClient(products=[_raw_product(image_url="")])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    assert product.image_url == "https://img.test/existing.png"
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_updates_existing_product_image_when_pos_sends_new_url():
+    session = FakeSession()
+    session.categories.append(_category())
+    product = _product(image_url="https://img.test/existing.png")
+    session.products.append(product)
+    client = FakePosClient(products=[_raw_product(image_url="https://img.test/new-product.png")])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    assert product.image_url == "https://img.test/new-product.png"
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_new_product_without_image_stays_without_image():
+    session = FakeSession()
+    session.categories.append(_category())
+    client = FakePosClient(products=[_raw_product(sku="SKU-NEW", image_url="")])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    created = next(product for product in session.products if product.sku == "SKU-NEW")
+    assert created.image_url == ""
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_preserves_existing_promotion_image_when_pos_image_is_empty():
+    session = FakeSession()
+    promotion = _promotion(image_url="https://img.test/existing-promo.png")
+    session.promotions.append(promotion)
+    client = FakePosClient(products=[], promotions=[_raw_promotion(image_url="")])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    assert promotion.image_url == "https://img.test/existing-promo.png"
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_updates_existing_promotion_image_when_pos_sends_new_url():
+    session = FakeSession()
+    promotion = _promotion(image_url="https://img.test/existing-promo.png")
+    session.promotions.append(promotion)
+    client = FakePosClient(
+        products=[],
+        promotions=[_raw_promotion(image_url="https://img.test/new-promo.png")],
+    )
+
+    await PosCatalogSyncService(session, client).sync()
+
+    assert promotion.image_url == "https://img.test/new-promo.png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("alias", "url"),
+    [
+        ("imagen_url", "https://img.test/imagen-url.png"),
+        ("imagen", "https://img.test/imagen.png"),
+        ("thumbnail_url", "https://img.test/thumb.png"),
+        ("media_url", "https://img.test/media.png"),
+    ],
+)
+async def test_pos_catalog_sync_recognizes_product_image_aliases(alias, url):
+    session = FakeSession()
+    session.categories.append(_category())
+    raw = _raw_product(sku=f"SKU-{alias}", image_url="")
+    raw[alias] = url
+    client = FakePosClient(products=[raw])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    created = next(product for product in session.products if product.sku == f"SKU-{alias}")
+    assert created.image_url == url
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_recognizes_promotion_and_category_image_aliases():
+    session = FakeSession()
+    category = _category(image_url="https://img.test/old-category.png")
+    session.categories.append(category)
+    promotion = _promotion(image_url="https://img.test/old-promo.png")
+    session.promotions.append(promotion)
+    raw_product = _raw_product(image_url="")
+    raw_product["category"] = {
+        "name": "Rolls",
+        "slug": "rolls",
+        "media_url": "https://img.test/category-media.png",
+    }
+    raw_promotion = _raw_promotion(image_url="", thumbnail_url="https://img.test/promo-thumb.png")
+    client = FakePosClient(products=[raw_product], promotions=[raw_promotion])
+
+    await PosCatalogSyncService(session, client).sync()
+
+    assert category.image_url == "https://img.test/category-media.png"
+    assert promotion.image_url == "https://img.test/promo-thumb.png"

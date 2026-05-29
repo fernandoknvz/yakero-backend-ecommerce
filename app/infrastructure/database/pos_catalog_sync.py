@@ -19,6 +19,18 @@ from .models.orm_models import CategoryORM, ProductORM, PromotionORM
 logger = logging.getLogger(__name__)
 
 
+IMAGE_KEYS = (
+    "image_url",
+    "imagen_url",
+    "imagen",
+    "image",
+    "photo_url",
+    "picture",
+    "thumbnail_url",
+    "media_url",
+)
+
+
 @dataclass
 class PosCatalogEntitySyncResult:
     received: int = 0
@@ -153,24 +165,28 @@ class PosCatalogSyncService:
             return False
 
         category = categories_by_slug.get(category_slug)
+        category_image_url = _image_value(category_data)
         category_values = {
             "name": category_name,
             "slug": category_slug,
             "ticket_tag": _ticket_tag(raw, category_data),
-            "image_url": _string_value(category_data, "image_url", "image", "photo_url"),
             "sort_order": _int_value(category_data, "sort_order", "position", default=0),
             "is_active": _active_value(category_data),
         }
         if category is None:
+            category_values["image_url"] = category_image_url
             category = CategoryORM(**category_values)
             self._session.add(category)
             await self._session.flush()
             categories_by_slug[category_slug] = category
             result.categories_created += 1
         else:
+            if category_image_url:
+                category_values["image_url"] = category_image_url
             _assign(category, category_values)
             result.categories_updated += 1
 
+        product_image_url = _image_value(raw)
         product_values = {
             "category_id": category.id,
             "sku": sku,
@@ -178,7 +194,6 @@ class PosCatalogSyncService:
             "slug": _slugify(f"{_required_string(raw, 'name', 'nombre', 'title')}-{sku}"),
             "description": _string_value(raw, "description", "descripcion", "detail"),
             "price": _decimal_value(raw, "price", "precio", "amount", "value"),
-            "image_url": _string_value(raw, "image_url", "image", "photo_url", "picture"),
             "ticket_tag": _ticket_tag(raw, category_data),
             "is_available": _active_value(raw) and _available_for_ecommerce(raw),
             "sort_order": _int_value(raw, "sort_order", "position", "order", default=0),
@@ -186,11 +201,14 @@ class PosCatalogSyncService:
 
         product = products_by_sku.get(sku)
         if product is None:
+            product_values["image_url"] = product_image_url
             product = ProductORM(**product_values)
             self._session.add(product)
             products_by_sku[sku] = product
             result.products.created += 1
         else:
+            if product_image_url:
+                product_values["image_url"] = product_image_url
             was_available = bool(product.is_available)
             _assign(product, product_values)
             result.products.updated += 1
@@ -214,13 +232,13 @@ class PosCatalogSyncService:
             result.errors.append(f"promotion[{index}] skipped: missing external_code")
             return False
 
+        promotion_image_url = _image_value(raw)
         promotion_values = {
             "external_code": external_code,
             "name": _required_string(raw, "name", "nombre", "title"),
             "description": _string_value(raw, "description", "descripcion", "detail"),
             "promotion_type": _string_value(raw, "promotion_type", "type", default="bundle") or "bundle",
             "value": _decimal_value(raw, "value", "price", "precio", "amount", "discount_value"),
-            "image_url": _string_value(raw, "image_url", "image", "photo_url", "picture"),
             "is_active": _active_value(raw) and _available_for_ecommerce(raw),
             "starts_at": _datetime_value(raw, "starts_at", "start_at", "valid_from"),
             "ends_at": _datetime_value(raw, "ends_at", "end_at", "valid_until"),
@@ -228,11 +246,14 @@ class PosCatalogSyncService:
 
         promotion = promotions_by_external_code.get(external_code)
         if promotion is None:
+            promotion_values["image_url"] = promotion_image_url
             promotion = PromotionORM(**promotion_values)
             self._session.add(promotion)
             promotions_by_external_code[external_code] = promotion
             result.promotions.created += 1
         else:
+            if promotion_image_url:
+                promotion_values["image_url"] = promotion_image_url
             was_active = bool(promotion.is_active)
             _assign(promotion, promotion_values)
             result.promotions.updated += 1
@@ -365,6 +386,10 @@ def _string_value(raw: dict[str, Any], *keys: str, default: str = "") -> str:
     if isinstance(value, str):
         return value.strip()
     return str(value).strip()
+
+
+def _image_value(raw: dict[str, Any]) -> str:
+    return _string_value(raw, *IMAGE_KEYS)
 
 
 def _first_value(raw: dict[str, Any], *keys: str) -> Any:
