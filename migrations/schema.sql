@@ -70,6 +70,7 @@ CREATE TABLE products (
   sku          VARCHAR(50) UNIQUE,
   name         VARCHAR(200) NOT NULL,
   slug         VARCHAR(220) NOT NULL UNIQUE,
+  subcategory  VARCHAR(120),
   description  TEXT,
   price        DECIMAL(10,0) NOT NULL,
   image_url    VARCHAR(500),

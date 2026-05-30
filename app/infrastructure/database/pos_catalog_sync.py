@@ -192,6 +192,7 @@ class PosCatalogSyncService:
             "sku": sku,
             "name": _required_string(raw, "name", "nombre", "title"),
             "slug": _slugify(f"{_required_string(raw, 'name', 'nombre', 'title')}-{sku}"),
+            "subcategory": _subcategory_value(raw),
             "description": _string_value(raw, "description", "descripcion", "detail"),
             "price": _decimal_value(raw, "price", "precio", "amount", "value"),
             "ticket_tag": _ticket_tag(raw, category_data),
@@ -329,6 +330,13 @@ def _category_name(category: dict[str, Any], raw: dict[str, Any]) -> str:
         _string_value(category, "name", "nombre", "title")
         or _string_value(raw, "category_name", "categoria_nombre", "category")
     )
+
+
+def _subcategory_value(raw: dict[str, Any]) -> str | None:
+    subcategory = raw.get("subcategory") or raw.get("sub_category") or raw.get("subcategoria")
+    if isinstance(subcategory, dict):
+        return _string_value(subcategory, "name", "nombre", "title", "slug", "code") or None
+    return _string_value(raw, "subcategory", "sub_category", "subcategoria") or None
 
 
 def _ticket_tag(raw: dict[str, Any], category: dict[str, Any] | None = None) -> TicketTag:

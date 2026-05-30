@@ -134,6 +134,7 @@ class ProductOut(BaseModel):
     sku: Optional[str]
     name: str
     slug: str
+    subcategory: Optional[str] = None
     description: Optional[str]
     price: Decimal
     image_url: Optional[str]
@@ -152,6 +153,7 @@ class ProductListItemOut(BaseModel):
     sku: Optional[str]
     name: str
     slug: str
+    subcategory: Optional[str] = None
     description: Optional[str]
     price: Decimal
     image_url: Optional[str]

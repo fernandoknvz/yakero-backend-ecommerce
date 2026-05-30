@@ -140,6 +140,7 @@ def _raw_product(**overrides):
         "name": "Roll actualizado",
         "description": "Ahora",
         "price": "2500",
+        "subcategory": "Hand Rolls",
         "image_url": "https://img.test/roll.png",
         "category": {
             "name": "Rolls",
@@ -193,6 +194,7 @@ async def test_pos_catalog_sync_upserts_products_and_deactivates_missing_skus():
     assert len(session.products) == 3
     assert existing.name == "Roll actualizado"
     assert existing.price == Decimal("2500")
+    assert existing.subcategory == "Hand Rolls"
     assert missing_from_pos.is_available is False
 
 
@@ -235,7 +237,26 @@ async def test_pos_catalog_sync_updates_existing_product_by_sku():
     assert result.products.updated == 1
     assert product.name == "Despues"
     assert product.price == Decimal("3990")
+    assert product.subcategory == "Hand Rolls"
     assert product.image_url == "https://img.test/new.png"
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_sync_saves_subcategory_aliases():
+    session = FakeSession()
+    session.categories.append(_category())
+    client = FakePosClient(
+        products=[
+            _raw_product(sku="SKU-SUB", subcategory={"name": "Papas Fritas"}),
+            _raw_product(sku="SKU-SUB-2", subcategory="", sub_category="Empanadas"),
+        ]
+    )
+
+    await PosCatalogSyncService(session, client).sync()
+
+    by_sku = {product.sku: product for product in session.products}
+    assert by_sku["SKU-SUB"].subcategory == "Papas Fritas"
+    assert by_sku["SKU-SUB-2"].subcategory == "Empanadas"
 
 
 @pytest.mark.asyncio

@@ -78,6 +78,7 @@ class Product:
     sku: Optional[str]
     name: str
     slug: str
+    subcategory: Optional[str]
     description: Optional[str]
     price: Decimal
     image_url: Optional[str]

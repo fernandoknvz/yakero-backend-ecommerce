@@ -91,6 +91,7 @@ class ProductORM(Base):
     sku = Column(String(50), unique=True, index=True)
     name = Column(String(200), nullable=False)
     slug = Column(String(220), unique=True, nullable=False)
+    subcategory = Column(String(120))
     description = Column(Text)
     price = Column(Numeric(10, 0), nullable=False)
     image_url = Column(String(500))

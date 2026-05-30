@@ -162,3 +162,65 @@ async def test_pos_catalog_audit_detects_promotions_without_image():
     payload = await PosCatalogAuditService(session).audit()
 
     assert payload["promotions"]["without_image"] == 1
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_audit_details_returns_products_without_price():
+    session = FakeSession(
+        categories=[_category(name="Rolls")],
+        products=[
+            _product(sku="ZERO", name="Sin precio", price=Decimal("0")),
+            _product(sku="OK", name="Con precio", price=Decimal("1000")),
+        ],
+    )
+
+    payload = await PosCatalogAuditService(session).details()
+
+    assert payload["products_without_price"] == [
+        {
+            "sku": "ZERO",
+            "name": "Sin precio",
+            "category": "Rolls",
+            "subcategory": None,
+            "price": Decimal("0"),
+            "is_available": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_audit_details_limits_products_without_image_to_20():
+    session = FakeSession(
+        categories=[_category()],
+        products=[
+            _product(sku=f"NOIMG-{index}", slug=f"noimg-{index}", image_url=None)
+            for index in range(25)
+        ],
+    )
+
+    payload = await PosCatalogAuditService(session).details()
+
+    assert len(payload["products_without_image"]) == 20
+    assert payload["products_without_image"][0]["sku"] == "NOIMG-0"
+    assert payload["products_without_image"][-1]["sku"] == "NOIMG-19"
+
+
+@pytest.mark.asyncio
+async def test_pos_catalog_audit_details_returns_promotions_without_image():
+    session = FakeSession(
+        promotions=[
+            _promotion(external_code="NOIMG", name="Promo sin imagen", image_url=""),
+            _promotion(external_code="OK", image_url="https://img.test/promo.png"),
+        ],
+    )
+
+    payload = await PosCatalogAuditService(session).details()
+
+    assert payload["promotions_without_image"] == [
+        {
+            "code": "NOIMG",
+            "name": "Promo sin imagen",
+            "price": Decimal("9990"),
+            "is_active": True,
+        }
+    ]

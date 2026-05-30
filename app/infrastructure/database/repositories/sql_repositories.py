@@ -48,7 +48,7 @@ def _map_modifier_group(g) -> ModifierGroup:
 def _map_product(p) -> Product:
     return Product(
         id=p.id, category_id=p.category_id, sku=p.sku, name=p.name,
-        slug=p.slug, description=p.description, price=Decimal(p.price),
+        slug=p.slug, subcategory=p.subcategory, description=p.description, price=Decimal(p.price),
         image_url=p.image_url, ticket_tag=p.ticket_tag,
         is_available=p.is_available, sort_order=p.sort_order,
         modifier_groups=[_map_modifier_group(g) for g in p.modifier_groups],

@@ -34,6 +34,30 @@ class PosCatalogAuditService:
             },
         }
 
+    async def details(self) -> dict[str, Any]:
+        categories = await self._load_all(CategoryORM)
+        products = await self._load_all(ProductORM)
+        promotions = await self._load_all(PromotionORM)
+        categories_by_id = {category.id: category for category in categories if category.id is not None}
+
+        return {
+            "products_without_price": [
+                self._product_detail(product, categories_by_id)
+                for product in products
+                if _is_missing_money(product.price)
+            ],
+            "products_without_image": [
+                self._product_detail(product, categories_by_id)
+                for product in products
+                if not _clean(product.image_url)
+            ][:20],
+            "promotions_without_image": [
+                self._promotion_detail(promotion)
+                for promotion in promotions
+                if not _clean(promotion.image_url)
+            ],
+        }
+
     async def _load_all(self, model):
         result = await self._session.execute(select(model))
         return result.scalars().all()
@@ -65,6 +89,29 @@ class PosCatalogAuditService:
             "without_code": sum(1 for promotion in promotions if not _clean(promotion.external_code)),
             "without_image": sum(1 for promotion in promotions if not _clean(promotion.image_url)),
             "duplicate_codes": _duplicates(codes),
+        }
+
+    def _product_detail(
+        self,
+        product: ProductORM,
+        categories_by_id: dict[int, CategoryORM],
+    ) -> dict[str, Any]:
+        category = categories_by_id.get(product.category_id)
+        return {
+            "sku": product.sku,
+            "name": product.name,
+            "category": category.name if category else None,
+            "subcategory": getattr(product, "subcategory", None),
+            "price": product.price,
+            "is_available": bool(product.is_available),
+        }
+
+    def _promotion_detail(self, promotion: PromotionORM) -> dict[str, Any]:
+        return {
+            "code": promotion.external_code,
+            "name": promotion.name,
+            "price": promotion.value,
+            "is_active": bool(promotion.is_active),
         }
 
 

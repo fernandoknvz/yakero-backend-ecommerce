@@ -20,7 +20,7 @@ def make_product(required_group: bool = True) -> Product:
     )
     return Product(
         id=1, category_id=1, sku="P001", name="California Roll",
-        slug="california-roll", description=None, price=Decimal("4990"),
+        slug="california-roll", subcategory=None, description=None, price=Decimal("4990"),
         image_url=None, ticket_tag=TicketTag.COCINA_SUSHI,
         is_available=True, sort_order=1, modifier_groups=[group],
     )

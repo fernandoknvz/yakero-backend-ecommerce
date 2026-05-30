@@ -61,6 +61,7 @@ def test_list_products(client):
     payload = response.json()
     assert len(payload) == 2
     assert payload[0]["category"]["slug"] == "rolls"
+    assert payload[0]["subcategory"] == "Hand Rolls"
     assert payload[0]["flags"]["is_configurable"] is True
 
 
@@ -70,6 +71,7 @@ def test_get_product_detail(client):
     payload = response.json()
     assert payload["slug"] == "yakero-roll"
     assert payload["category"]["slug"] == "rolls"
+    assert payload["subcategory"] == "Hand Rolls"
     assert len(payload["modifier_groups"]) == 2
     assert len(payload["applicable_promotions"]) == 1
 
@@ -80,6 +82,7 @@ def test_filter_products_by_category(client):
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["slug"] == "limonada"
+    assert payload[0]["subcategory"] is None
 
 
 def test_create_valid_preview(client):
