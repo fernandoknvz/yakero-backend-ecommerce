@@ -33,6 +33,11 @@ from scripts.import_product_image_assignments import (
     apply_product_image_assignments,
     load_assignments,
 )
+from scripts.compare_pos_ecommerce_images import (
+    ImageProduct,
+    build_ecommerce_to_pos_assignments,
+    pos_product_from_payload,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -213,6 +218,28 @@ async def catalog_image_audit_db_only(
     return await _build_catalog_image_audit_db_only(db)
 
 
+@router.get("/catalog/image-sync/ecommerce-to-pos-candidates")
+async def catalog_ecommerce_to_pos_image_candidates(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    logger.info("Catalog ecommerce-to-POS image candidates requested.")
+    try:
+        return await _build_ecommerce_to_pos_image_candidates(db)
+    except PosClientError as exc:
+        safe_message = _safe_log_message(exc.message)
+        logger.warning(
+            "Catalog ecommerce-to-POS image candidates failed with POS client error status_code=%s message=%s",
+            exc.status_code,
+            safe_message,
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"ok": False, "error": safe_message},
+        )
+
+
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
     if settings.is_production and not settings.debug:
         raise HTTPException(status_code=403, detail="Bootstrap deshabilitado en produccion.")
@@ -348,6 +375,63 @@ def _format_money(value: object) -> str:
     if decimal == decimal.to_integral_value():
         return str(decimal.quantize(Decimal("1")))
     return str(decimal)
+
+
+async def _build_ecommerce_to_pos_image_candidates(db: AsyncSession) -> dict[str, Any]:
+    ecommerce_products = await _load_ecommerce_image_products(db)
+    pos_payload = await PosClient().get_products()
+    pos_products = {
+        product.sku: product
+        for product in (
+            pos_product_from_payload(raw)
+            for raw in _extract_pos_items(pos_payload, "products")
+        )
+        if product.sku
+    }
+    candidates = build_ecommerce_to_pos_assignments(ecommerce_products, pos_products)
+    return {
+        "total_ecommerce_products": len(ecommerce_products),
+        "total_pos_products": len(pos_products),
+        "candidates_count": len(candidates),
+        "candidates": candidates,
+    }
+
+
+async def _load_ecommerce_image_products(db: AsyncSession) -> dict[str, ImageProduct]:
+    result = await db.execute(
+        select(ProductORM, CategoryORM)
+        .join(CategoryORM, ProductORM.category_id == CategoryORM.id)
+        .where(ProductORM.sku.is_not(None), ProductORM.sku != "")
+        .order_by(ProductORM.sku)
+    )
+    return {
+        str(product.sku).strip(): ImageProduct(
+            sku=str(product.sku).strip(),
+            product_name=product.name or "",
+            category=category.slug or category.name or "",
+            subcategory=product.subcategory or "",
+            image_url=product.image_url or "",
+        )
+        for product, category in result.all()
+        if product.sku and str(product.sku).strip()
+    }
+
+
+def _extract_pos_items(payload: Any, preferred_key: str) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in (preferred_key, "results", "items", "data"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    catalog = payload.get("catalog")
+    if isinstance(catalog, dict):
+        value = catalog.get(preferred_key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
 
 
 async def _run_alembic_upgrade() -> None:

@@ -1188,6 +1188,68 @@ def test_internal_catalog_image_audit_db_only_returns_summary(client, monkeypatc
     assert payload["products_without_image"][0]["sku"] == "SAND-LOM-SOLO"
 
 
+def test_internal_ecommerce_to_pos_image_candidates_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.get("/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates")
+    invalid = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "wrong"},
+    )
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_ecommerce_to_pos_image_candidates_returns_candidates(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_build_candidates(_db):
+        return {
+            "total_ecommerce_products": 3,
+            "total_pos_products": 2,
+            "candidates_count": 1,
+            "candidates": [
+                {
+                    "sku": "SAND-LOM-SOLO",
+                    "pos_product_id": "123",
+                    "name": "Lomo Solo",
+                    "category": "sandwich",
+                    "subcategory": "Lomo",
+                    "ecommerce_image_url": "https://cdn.yakero.cl/products/sandwich/sandwich-lomo.webp",
+                    "pos_current_image_url": "",
+                    "action": "update_pos_image_url",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_build_ecommerce_to_pos_image_candidates", fake_build_candidates)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_ecommerce_products"] == 3
+    assert payload["total_pos_products"] == 2
+    assert payload["candidates_count"] == 1
+    assert payload["candidates"][0] == {
+        "sku": "SAND-LOM-SOLO",
+        "pos_product_id": "123",
+        "name": "Lomo Solo",
+        "category": "sandwich",
+        "subcategory": "Lomo",
+        "ecommerce_image_url": "https://cdn.yakero.cl/products/sandwich/sandwich-lomo.webp",
+        "pos_current_image_url": "",
+        "action": "update_pos_image_url",
+    }
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 
