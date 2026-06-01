@@ -89,6 +89,29 @@ def test_load_assignments_reads_lomos_csv():
     assert by_sku["SAND-LOM-SOLO"].image_url.endswith("/sandwich-lomo.webp")
 
 
+def test_load_assignments_reads_churrasco_gohan_csv():
+    path = Path("exports/sandwich_churrasco_gohan_image_assignments.csv")
+
+    assignments = load_assignments(path)
+    by_sku = {assignment.sku: assignment for assignment in assignments}
+
+    assert len(assignments) == 4
+    assert set(by_sku) == {
+        "SAND-CHUR-SOLO",
+        "SAND-CHUR-BAR-LUC",
+        "SAND-CHUR-ALOP",
+        "SUSHI-GOH-MIXTO",
+    }
+    assert by_sku["SAND-CHUR-SOLO"].category == "sandwich"
+    assert by_sku["SAND-CHUR-SOLO"].subcategory == "Churrasco"
+    assert by_sku["SAND-CHUR-SOLO"].image_url.endswith("/sandwich-churrasco.webp")
+    assert by_sku["SAND-CHUR-BAR-LUC"].image_url.endswith("/sandwich-churrasco-luco.webp")
+    assert by_sku["SAND-CHUR-ALOP"].image_url.endswith("/huevo-churrasco.webp")
+    assert by_sku["SUSHI-GOH-MIXTO"].category == "sushi"
+    assert by_sku["SUSHI-GOH-MIXTO"].subcategory == "Gohan"
+    assert by_sku["SUSHI-GOH-MIXTO"].image_url.endswith("/gohan-mixto.webp")
+
+
 def test_load_assignments_requires_sku_and_image_url():
     csv_path = Path("tests/fixtures/product_image_assignments_missing_image_url.csv")
 
