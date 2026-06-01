@@ -1125,6 +1125,69 @@ def test_internal_catalog_image_assignment_import_rejects_paths_outside_exports(
     assert response.json()["detail"] == "CSV path must be inside exports/."
 
 
+def test_internal_catalog_image_audit_db_only_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.get("/api/v1/internal/catalog/image-audit/db-only")
+    invalid = client.get(
+        "/api/v1/internal/catalog/image-audit/db-only",
+        headers={"X-Internal-Token": "wrong"},
+    )
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_catalog_image_audit_db_only_returns_summary(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_build_audit(_db):
+        return {
+            "total_products": 3,
+            "products_with_image": 2,
+            "products_without_image_count": 1,
+            "coverage_percentage": 66.67,
+            "without_image_by_category": [
+                {"category": "sandwich", "products_without_image": 1},
+            ],
+            "without_image_by_subcategory": [
+                {"subcategory": "Lomo", "products_without_image": 1},
+            ],
+            "products_without_image": [
+                {
+                    "sku": "SAND-LOM-SOLO",
+                    "name": "Lomo Solo",
+                    "category": "sandwich",
+                    "subcategory": "Lomo",
+                    "price": "5990",
+                    "active": True,
+                    "available_for_ecommerce": True,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_build_catalog_image_audit_db_only", fake_build_audit)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-audit/db-only",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_products"] == 3
+    assert payload["products_with_image"] == 2
+    assert payload["products_without_image_count"] == 1
+    assert payload["coverage_percentage"] == 66.67
+    assert payload["without_image_by_category"] == [
+        {"category": "sandwich", "products_without_image": 1},
+    ]
+    assert payload["products_without_image"][0]["sku"] == "SAND-LOM-SOLO"
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

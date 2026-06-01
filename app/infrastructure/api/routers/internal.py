@@ -1,7 +1,10 @@
 import asyncio
+from collections import Counter
 import logging
 import secrets
 from pathlib import Path
+from decimal import Decimal
+from typing import Any
 
 from alembic import command
 from alembic.config import Config as AlembicConfig
@@ -200,6 +203,16 @@ async def import_catalog_image_assignments(
     }
 
 
+@router.get("/catalog/image-audit/db-only")
+async def catalog_image_audit_db_only(
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    logger.info("Catalog DB-only image audit requested.")
+    return await _build_catalog_image_audit_db_only(db)
+
+
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
     if settings.is_production and not settings.debug:
         raise HTTPException(status_code=403, detail="Bootstrap deshabilitado en produccion.")
@@ -264,6 +277,77 @@ def _resolve_versioned_csv_path(csv_path: str | None) -> Path:
     if resolved.suffix.lower() != ".csv":
         raise HTTPException(status_code=400, detail="CSV path must end with .csv.")
     return resolved
+
+
+async def _build_catalog_image_audit_db_only(db: AsyncSession) -> dict[str, Any]:
+    result = await db.execute(
+        select(ProductORM, CategoryORM)
+        .join(CategoryORM, ProductORM.category_id == CategoryORM.id)
+        .where(ProductORM.is_available.is_(True), CategoryORM.is_active.is_(True))
+        .order_by(CategoryORM.slug, ProductORM.subcategory, ProductORM.name)
+    )
+    rows = result.all()
+    products = [(product, category) for product, category in rows]
+    without_image = [
+        (product, category)
+        for product, category in products
+        if not _has_catalog_image(product.image_url)
+    ]
+    with_image_count = len(products) - len(without_image)
+    coverage_percentage = round((with_image_count / len(products)) * 100, 2) if products else 0
+
+    by_category = Counter(_category_label(category) for _, category in without_image)
+    by_subcategory = Counter(_subcategory_label(product) for product, _ in without_image)
+
+    return {
+        "total_products": len(products),
+        "products_with_image": with_image_count,
+        "products_without_image_count": len(without_image),
+        "coverage_percentage": coverage_percentage,
+        "without_image_by_category": [
+            {"category": category, "products_without_image": count}
+            for category, count in sorted(by_category.items())
+        ],
+        "without_image_by_subcategory": [
+            {"subcategory": subcategory, "products_without_image": count}
+            for subcategory, count in sorted(by_subcategory.items())
+        ],
+        "products_without_image": [
+            {
+                "sku": product.sku,
+                "name": product.name,
+                "category": _category_label(category),
+                "subcategory": product.subcategory,
+                "price": _format_money(product.price),
+                "active": bool(product.is_available and category.is_active),
+                "available_for_ecommerce": bool(product.is_available and category.is_active),
+            }
+            for product, category in without_image
+        ],
+    }
+
+
+def _has_catalog_image(value: object) -> bool:
+    if value is None:
+        return False
+    return bool(str(value).strip())
+
+
+def _category_label(category: CategoryORM) -> str:
+    return category.slug or category.name or ""
+
+
+def _subcategory_label(product: ProductORM) -> str:
+    return product.subcategory or "sin_subcategoria"
+
+
+def _format_money(value: object) -> str:
+    if value is None:
+        return ""
+    decimal = Decimal(str(value))
+    if decimal == decimal.to_integral_value():
+        return str(decimal.quantize(Decimal("1")))
+    return str(decimal)
 
 
 async def _run_alembic_upgrade() -> None:
