@@ -7,6 +7,7 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,10 +26,21 @@ from ....auth import require_pos
 from ....config import settings
 from ....domain.exceptions import DomainError
 from ....domain.models.entities import User
+from scripts.import_product_image_assignments import (
+    apply_product_image_assignments,
+    load_assignments,
+)
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/internal", tags=["POS Interno"])
+DEFAULT_IMAGE_ASSIGNMENTS_CSV = Path("exports/empanadas_product_image_assignments.csv")
+
+
+class CatalogImageAssignmentsImportInput(BaseModel):
+    csv_path: str | None = None
+    dry_run: bool = True
+    fail_on_missing: bool = True
 
 
 @router.get("/orders/pending", response_model=list[PosOrderOut])
@@ -150,6 +162,44 @@ async def audit_pos_catalog_details(
     return await PosCatalogAuditService(db).details()
 
 
+@router.post("/catalog/image-assignments/import")
+async def import_catalog_image_assignments(
+    data: CatalogImageAssignmentsImportInput | None = None,
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_migration_bootstrap_allowed(x_internal_token)
+    payload = data or CatalogImageAssignmentsImportInput()
+    csv_path = _resolve_versioned_csv_path(payload.csv_path)
+
+    try:
+        assignments = load_assignments(csv_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="CSV file not found.")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        result = await apply_product_image_assignments(
+            db,
+            assignments,
+            dry_run=payload.dry_run,
+            fail_on_missing=payload.fail_on_missing,
+        )
+    except Exception:
+        logger.exception("Catalog image assignment import failed.")
+        raise HTTPException(status_code=500, detail="Image assignment import failed.")
+
+    return {
+        "dry_run": payload.dry_run,
+        "total_rows": result.received,
+        "updated": result.updated,
+        "skipped": result.skipped,
+        "missing": result.missing,
+        "errors": result.errors,
+    }
+
+
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
     if settings.is_production and not settings.debug:
         raise HTTPException(status_code=403, detail="Bootstrap deshabilitado en produccion.")
@@ -195,6 +245,25 @@ def _safe_log_message(message: str) -> str:
         if secret:
             safe = safe.replace(secret, "***")
     return safe
+
+
+def _resolve_versioned_csv_path(csv_path: str | None) -> Path:
+    repo_root = Path(__file__).resolve().parents[4]
+    requested_path = (csv_path or "").strip() or str(DEFAULT_IMAGE_ASSIGNMENTS_CSV)
+    relative_path = Path(requested_path)
+    if relative_path.is_absolute():
+        raise HTTPException(status_code=400, detail="CSV path must be relative.")
+
+    resolved = (repo_root / relative_path).resolve()
+    exports_root = (repo_root / "exports").resolve()
+    try:
+        resolved.relative_to(exports_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="CSV path must be inside exports/.")
+
+    if resolved.suffix.lower() != ".csv":
+        raise HTTPException(status_code=400, detail="CSV path must end with .csv.")
+    return resolved
 
 
 async def _run_alembic_upgrade() -> None:

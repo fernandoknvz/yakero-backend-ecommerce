@@ -1047,6 +1047,84 @@ def test_internal_pos_catalog_audit_details_returns_detail_lists(client, monkeyp
     assert response.json()["promotions_without_image"][0]["code"] == "PROMO-1"
 
 
+def test_internal_catalog_image_assignment_import_requires_valid_token(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    missing = client.post("/api/v1/internal/catalog/image-assignments/import")
+    invalid = client.post(
+        "/api/v1/internal/catalog/image-assignments/import",
+        headers={"X-Internal-Token": "wrong"},
+    )
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+
+
+def test_internal_catalog_image_assignment_import_runs_default_csv(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+    from scripts.import_product_image_assignments import ProductImageImportResult
+
+    captured = {}
+
+    def fake_load_assignments(csv_path):
+        captured["csv_path"] = csv_path
+        return ["assignment-1", "assignment-2"]
+
+    async def fake_apply_assignments(db, assignments, *, dry_run, fail_on_missing):
+        captured["db"] = db
+        captured["assignments"] = assignments
+        captured["dry_run"] = dry_run
+        captured["fail_on_missing"] = fail_on_missing
+        return ProductImageImportResult(
+            received=2,
+            updated=1,
+            skipped=1,
+            missing=["CAS-EMP-MISSING"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "load_assignments", fake_load_assignments)
+    monkeypatch.setattr(internal_router_module, "apply_product_image_assignments", fake_apply_assignments)
+
+    response = client.post(
+        "/api/v1/internal/catalog/image-assignments/import",
+        headers={"X-Internal-Token": "secret-token"},
+        json={"dry_run": True, "fail_on_missing": True},
+    )
+
+    assert response.status_code == 200
+    assert captured["csv_path"].as_posix().endswith("exports/empanadas_product_image_assignments.csv")
+    assert captured["assignments"] == ["assignment-1", "assignment-2"]
+    assert captured["dry_run"] is True
+    assert captured["fail_on_missing"] is True
+    assert response.json() == {
+        "dry_run": True,
+        "total_rows": 2,
+        "updated": 1,
+        "skipped": 1,
+        "missing": ["CAS-EMP-MISSING"],
+        "errors": [],
+    }
+
+
+def test_internal_catalog_image_assignment_import_rejects_paths_outside_exports(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+
+    response = client.post(
+        "/api/v1/internal/catalog/image-assignments/import",
+        headers={"X-Internal-Token": "secret-token"},
+        json={"csv_path": "../.env", "dry_run": True},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "CSV path must be inside exports/."
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

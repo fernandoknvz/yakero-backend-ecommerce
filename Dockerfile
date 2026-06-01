@@ -30,7 +30,9 @@ RUN addgroup --system yakero \
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --chown=yakero:yakero app ./app
+COPY --chown=yakero:yakero exports ./exports
 COPY --chown=yakero:yakero migrations ./migrations
+COPY --chown=yakero:yakero scripts ./scripts
 COPY --chown=yakero:yakero alembic.ini ./alembic.ini
 
 USER yakero
