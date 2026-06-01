@@ -1250,6 +1250,184 @@ def test_internal_ecommerce_to_pos_image_candidates_returns_candidates(client, m
     }
 
 
+def test_internal_ecommerce_to_pos_image_candidates_returns_502_on_pos_error(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_load_ecommerce(_db):
+        return {}
+
+    class FakePosClient:
+        async def get_products(self):
+            raise internal_router_module.PosClientError(
+                "POS rejected token secret-token",
+                status_code=403,
+                provider_status_code=403,
+            )
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_load_ecommerce_image_products", fake_load_ecommerce)
+    monkeypatch.setattr(internal_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == {
+        "message": "Could not fetch POS catalog",
+        "status_code": 403,
+    }
+    assert "secret-token" not in str(response.json())
+
+
+def test_internal_ecommerce_to_pos_image_candidates_allows_empty_pos_response(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_load_ecommerce(_db):
+        return {
+            "SKU-1": internal_router_module.ImageProduct(
+                sku="SKU-1",
+                product_name="Producto",
+                category="sandwich",
+                subcategory="Lomo",
+                image_url="https://cdn.test/image.webp",
+            )
+        }
+
+    class FakePosClient:
+        async def get_products(self):
+            return {}
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_load_ecommerce_image_products", fake_load_ecommerce)
+    monkeypatch.setattr(internal_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total_ecommerce_products"] == 1
+    assert response.json()["total_pos_products"] == 0
+    assert response.json()["candidates_count"] == 0
+    assert response.json()["candidates"] == []
+
+
+def test_internal_ecommerce_to_pos_image_candidates_accepts_products_object(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_load_ecommerce(_db):
+        return {
+            "SKU-1": internal_router_module.ImageProduct(
+                sku="SKU-1",
+                product_name="Producto Ecommerce",
+                category="sandwich",
+                subcategory="Lomo",
+                image_url="https://cdn.test/image.webp",
+            )
+        }
+
+    class FakePosClient:
+        async def get_products(self):
+            return {
+                "products": [
+                    {
+                        "id": 10,
+                        "sku": "SKU-1",
+                        "name": "Producto POS",
+                        "category": {"slug": "sandwich"},
+                        "subcategory": {"name": "Lomo"},
+                        "image_url": "",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_load_ecommerce_image_products", fake_load_ecommerce)
+    monkeypatch.setattr(internal_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_pos_products"] == 1
+    assert payload["candidates_count"] == 1
+    assert payload["candidates"][0]["sku"] == "SKU-1"
+    assert payload["candidates"][0]["pos_product_id"] == "10"
+    assert payload["candidates"][0]["action"] == "update_pos_image_url"
+
+
+def test_internal_ecommerce_to_pos_image_candidates_accepts_products_list(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_load_ecommerce(_db):
+        return {
+            "SKU-1": internal_router_module.ImageProduct(
+                sku="SKU-1",
+                product_name="Producto Ecommerce",
+                category="sandwich",
+                subcategory="Lomo",
+                image_url="https://cdn.test/image.webp",
+            )
+        }
+
+    class FakePosClient:
+        async def get_products(self):
+            return [
+                {
+                    "pos_product_id": "POS-10",
+                    "sku": "SKU-1",
+                    "name": "Producto POS",
+                    "category": "sandwich",
+                    "subcategory": "Lomo",
+                    "image_url": "",
+                }
+            ]
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_load_ecommerce_image_products", fake_load_ecommerce)
+    monkeypatch.setattr(internal_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_pos_products"] == 1
+    assert payload["candidates_count"] == 1
+    assert payload["candidates"][0]["pos_product_id"] == "POS-10"
+
+
+def test_internal_ecommerce_to_pos_image_candidates_rejects_invalid_pos_format(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+
+    async def fake_load_ecommerce(_db):
+        return {}
+
+    class FakePosClient:
+        async def get_products(self):
+            return {"products": {"sku": "bad"}}
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "_load_ecommerce_image_products", fake_load_ecommerce)
+    monkeypatch.setattr(internal_router_module, "PosClient", FakePosClient)
+
+    response = client.get(
+        "/api/v1/internal/catalog/image-sync/ecommerce-to-pos-candidates",
+        headers={"X-Internal-Token": "secret-token"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Invalid POS catalog response format"
+
+
 def test_internal_pos_catalog_sync_returns_summary(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
 

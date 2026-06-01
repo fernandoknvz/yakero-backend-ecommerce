@@ -21,7 +21,7 @@ from ...database.pos_catalog_audit import PosCatalogAuditService
 from ...database.pos_catalog_sync import PosCatalogSyncService
 from ...database.repositories.sql_repositories import SQLOrderRepository
 from ...database.session import AsyncSessionLocal, get_db
-from ...clients import PosClientError
+from ...clients import PosClient, PosClientError
 from ..errors import domain_error_to_http
 from ....application.dtos.schemas import OrderOut, PosOrderOut, PosStatusUpdateInput
 from ....application.use_cases.orders.order_use_cases import UpdateOrderStatusUseCase
@@ -225,19 +225,7 @@ async def catalog_ecommerce_to_pos_image_candidates(
 ):
     _ensure_migration_bootstrap_allowed(x_internal_token)
     logger.info("Catalog ecommerce-to-POS image candidates requested.")
-    try:
-        return await _build_ecommerce_to_pos_image_candidates(db)
-    except PosClientError as exc:
-        safe_message = _safe_log_message(exc.message)
-        logger.warning(
-            "Catalog ecommerce-to-POS image candidates failed with POS client error status_code=%s message=%s",
-            exc.status_code,
-            safe_message,
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"ok": False, "error": safe_message},
-        )
+    return await _build_ecommerce_to_pos_image_candidates(db)
 
 
 def _ensure_bootstrap_allowed(x_internal_token: str | None) -> None:
@@ -379,21 +367,31 @@ def _format_money(value: object) -> str:
 
 async def _build_ecommerce_to_pos_image_candidates(db: AsyncSession) -> dict[str, Any]:
     ecommerce_products = await _load_ecommerce_image_products(db)
-    pos_payload = await PosClient().get_products()
-    pos_products = {
-        product.sku: product
-        for product in (
-            pos_product_from_payload(raw)
-            for raw in _extract_pos_items(pos_payload, "products")
-        )
-        if product.sku
-    }
+    pos_products = await _fetch_pos_image_products()
     candidates = build_ecommerce_to_pos_image_candidates(ecommerce_products, pos_products)
     return {
         "total_ecommerce_products": len(ecommerce_products),
         "total_pos_products": len(pos_products),
         "candidates_count": len(candidates),
         "candidates": candidates,
+    }
+
+
+async def _fetch_pos_image_products() -> dict[str, ImageProduct]:
+    try:
+        pos_payload = await PosClient().get_products()
+    except PosClientError as exc:
+        logger.exception("Could not fetch POS catalog for ecommerce-to-POS image candidates.")
+        detail = {"message": "Could not fetch POS catalog"}
+        if exc.status_code:
+            detail["status_code"] = exc.status_code
+        raise HTTPException(status_code=502, detail=detail)
+
+    pos_items = _extract_pos_items_or_raise(pos_payload, "products")
+    return {
+        product.sku: product
+        for product in (pos_product_from_payload(raw) for raw in pos_items)
+        if product.sku
     }
 
 
@@ -415,6 +413,38 @@ async def _load_ecommerce_image_products(db: AsyncSession) -> dict[str, ImagePro
         for product, category in result.all()
         if product.sku and str(product.sku).strip()
     }
+
+
+def _extract_pos_items_or_raise(payload: Any, preferred_key: str) -> list[dict[str, Any]]:
+    if payload in (None, ""):
+        return []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Invalid POS catalog response format")
+
+    for key in (preferred_key, "results", "items", "data"):
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if value in (None, ""):
+            return []
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        raise HTTPException(status_code=502, detail="Invalid POS catalog response format")
+
+    catalog = payload.get("catalog")
+    if isinstance(catalog, dict):
+        value = catalog.get(preferred_key)
+        if value in (None, ""):
+            return []
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        raise HTTPException(status_code=502, detail="Invalid POS catalog response format")
+
+    if not payload:
+        return []
+    raise HTTPException(status_code=502, detail="Invalid POS catalog response format")
 
 
 def _extract_pos_items(payload: Any, preferred_key: str) -> list[dict[str, Any]]:
