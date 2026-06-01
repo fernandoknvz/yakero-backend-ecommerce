@@ -65,6 +65,30 @@ def test_load_assignments_reads_empanadas_csv():
     )
 
 
+def test_load_assignments_reads_lomos_csv():
+    path = Path("exports/lomos_product_image_assignments.csv")
+
+    assignments = load_assignments(path)
+    by_sku = {assignment.sku: assignment for assignment in assignments}
+
+    assert len(assignments) == 7
+    assert set(by_sku) == {
+        "SAND-LOM-BAR-LUC",
+        "SAND-LOM-CHAC",
+        "SAND-LOM-COMP",
+        "SAND-LOM-DINA",
+        "SAND-LOM-ITAL",
+        "SAND-LOM-LUCO-CHAM",
+        "SAND-LOM-SOLO",
+    }
+    assert "SAND-LOM-AOP" not in by_sku
+    assert all(assignment.category == "sandwich" for assignment in assignments)
+    assert all(assignment.subcategory == "Lomo" for assignment in assignments)
+    assert by_sku["SAND-LOM-BAR-LUC"].image_url.endswith("/sandwich-lomo-luco.webp")
+    assert by_sku["SAND-LOM-LUCO-CHAM"].image_url.endswith("/sandwich-lomo-luco-champion.webp")
+    assert by_sku["SAND-LOM-SOLO"].image_url.endswith("/sandwich-lomo.webp")
+
+
 def test_load_assignments_requires_sku_and_image_url():
     csv_path = Path("tests/fixtures/product_image_assignments_missing_image_url.csv")
 
