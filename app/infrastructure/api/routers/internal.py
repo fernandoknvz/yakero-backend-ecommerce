@@ -29,14 +29,14 @@ from ....auth import require_pos
 from ....config import settings
 from ....domain.exceptions import DomainError
 from ....domain.models.entities import User
-from scripts.import_product_image_assignments import (
+from ....application.catalog.image_sync import (
+    ImageProduct,
+    build_ecommerce_to_pos_image_candidates,
+    pos_product_from_payload,
+)
+from ....application.catalog.image_assignments import (
     apply_product_image_assignments,
     load_assignments,
-)
-from scripts.compare_pos_ecommerce_images import (
-    ImageProduct,
-    build_ecommerce_to_pos_assignments,
-    pos_product_from_payload,
 )
 
 
@@ -388,7 +388,7 @@ async def _build_ecommerce_to_pos_image_candidates(db: AsyncSession) -> dict[str
         )
         if product.sku
     }
-    candidates = build_ecommerce_to_pos_assignments(ecommerce_products, pos_products)
+    candidates = build_ecommerce_to_pos_image_candidates(ecommerce_products, pos_products)
     return {
         "total_ecommerce_products": len(ecommerce_products),
         "total_pos_products": len(pos_products),
