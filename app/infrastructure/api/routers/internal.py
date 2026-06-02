@@ -35,6 +35,7 @@ from ....application.catalog.image_sync import (
     pos_product_from_payload,
 )
 from ....application.catalog.image_assignments import (
+    ProductImageAssignment,
     apply_product_image_assignments,
     load_assignments,
 )
@@ -45,7 +46,16 @@ router = APIRouter(prefix="/internal", tags=["POS Interno"])
 DEFAULT_IMAGE_ASSIGNMENTS_CSV = Path("exports/empanadas_product_image_assignments.csv")
 
 
+class CatalogImageAssignmentInput(BaseModel):
+    sku: str
+    image_url: str
+    category: str = ""
+    subcategory: str = ""
+    name: str = ""
+
+
 class CatalogImageAssignmentsImportInput(BaseModel):
+    assignments: list[CatalogImageAssignmentInput] | None = None
     csv_path: str | None = None
     dry_run: bool = True
     fail_on_missing: bool = True
@@ -178,14 +188,26 @@ async def import_catalog_image_assignments(
 ):
     _ensure_migration_bootstrap_allowed(x_internal_token)
     payload = data or CatalogImageAssignmentsImportInput()
-    csv_path = _resolve_versioned_csv_path(payload.csv_path)
 
-    try:
-        assignments = load_assignments(csv_path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=400, detail="CSV file not found.")
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    if payload.assignments is not None:
+        assignments = [
+            ProductImageAssignment(
+                sku=assignment.sku.strip(),
+                image_url=assignment.image_url.strip(),
+                category=assignment.category.strip(),
+                subcategory=assignment.subcategory.strip(),
+                name=assignment.name.strip(),
+            )
+            for assignment in payload.assignments
+        ]
+    else:
+        csv_path = _resolve_versioned_csv_path(payload.csv_path)
+        try:
+            assignments = load_assignments(csv_path)
+        except FileNotFoundError:
+            raise HTTPException(status_code=400, detail="CSV file not found.")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     try:
         result = await apply_product_image_assignments(
@@ -198,10 +220,14 @@ async def import_catalog_image_assignments(
         logger.exception("Catalog image assignment import failed.")
         raise HTTPException(status_code=500, detail="Image assignment import failed.")
 
+    updated = 0 if payload.dry_run else result.updated
+    would_update = result.updated if payload.dry_run else 0
     return {
         "dry_run": payload.dry_run,
+        "total_received": result.received,
         "total_rows": result.received,
-        "updated": result.updated,
+        "updated": updated,
+        "would_update": would_update,
         "skipped": result.skipped,
         "missing": result.missing,
         "errors": result.errors,

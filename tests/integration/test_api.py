@@ -1064,7 +1064,7 @@ def test_internal_catalog_image_assignment_import_requires_valid_token(client, m
 
 def test_internal_catalog_image_assignment_import_runs_default_csv(client, monkeypatch):
     from app.infrastructure.api.routers import internal as internal_router_module
-    from scripts.import_product_image_assignments import ProductImageImportResult
+    from app.application.catalog.image_assignments import ProductImageImportResult
 
     captured = {}
 
@@ -1102,12 +1102,98 @@ def test_internal_catalog_image_assignment_import_runs_default_csv(client, monke
     assert captured["fail_on_missing"] is True
     assert response.json() == {
         "dry_run": True,
+        "total_received": 2,
         "total_rows": 2,
-        "updated": 1,
+        "updated": 0,
+        "would_update": 1,
         "skipped": 1,
         "missing": ["CAS-EMP-MISSING"],
         "errors": [],
     }
+
+
+def test_internal_catalog_image_assignment_import_accepts_inline_dry_run(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+    from app.application.catalog.image_assignments import ProductImageImportResult
+
+    captured = {}
+
+    def fail_load_assignments(_csv_path):
+        raise AssertionError("inline assignments should not load a CSV")
+
+    async def fake_apply_assignments(db, assignments, *, dry_run, fail_on_missing):
+        captured["db"] = db
+        captured["assignments"] = assignments
+        captured["dry_run"] = dry_run
+        captured["fail_on_missing"] = fail_on_missing
+        return ProductImageImportResult(received=1, updated=1, skipped=0, missing=[], errors=[])
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "load_assignments", fail_load_assignments)
+    monkeypatch.setattr(internal_router_module, "apply_product_image_assignments", fake_apply_assignments)
+
+    response = client.post(
+        "/api/v1/internal/catalog/image-assignments/import",
+        headers={"X-Internal-Token": "secret-token"},
+        json={
+            "assignments": [
+                {
+                    "sku": "SAND-LOM-ITAL",
+                    "image_url": "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-italiano.webp",
+                }
+            ],
+            "dry_run": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["dry_run"] is True
+    assert captured["fail_on_missing"] is True
+    assert captured["assignments"][0].sku == "SAND-LOM-ITAL"
+    assert (
+        captured["assignments"][0].image_url
+        == "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-italiano.webp"
+    )
+    assert response.json() == {
+        "dry_run": True,
+        "total_received": 1,
+        "total_rows": 1,
+        "updated": 0,
+        "would_update": 1,
+        "skipped": 0,
+        "missing": [],
+        "errors": [],
+    }
+
+
+def test_internal_catalog_image_assignment_import_reports_updates_when_applied(client, monkeypatch):
+    from app.infrastructure.api.routers import internal as internal_router_module
+    from app.application.catalog.image_assignments import ProductImageImportResult
+
+    async def fake_apply_assignments(db, assignments, *, dry_run, fail_on_missing):
+        return ProductImageImportResult(received=1, updated=1, skipped=0, missing=[], errors=[])
+
+    monkeypatch.setattr(internal_router_module.settings, "internal_bootstrap_token", "secret-token")
+    monkeypatch.setattr(internal_router_module, "apply_product_image_assignments", fake_apply_assignments)
+
+    response = client.post(
+        "/api/v1/internal/catalog/image-assignments/import",
+        headers={"X-Internal-Token": "secret-token"},
+        json={
+            "assignments": [
+                {
+                    "sku": "SAND-LOM-ITAL",
+                    "image_url": "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-italiano.webp",
+                }
+            ],
+            "dry_run": False,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["updated"] == 1
+    assert payload["would_update"] == 0
 
 
 def test_internal_catalog_image_assignment_import_rejects_paths_outside_exports(client, monkeypatch):
