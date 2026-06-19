@@ -360,8 +360,23 @@ class OrderOut(BaseModel):
     delivered_at: Optional[datetime]
     mp_preference_id: Optional[str] = None
     mp_payment_id: Optional[str] = None
+    pos_sale_id: Optional[str] = None
+    pos_sync_status: Optional[str] = None
+    pos_sync_error: Optional[str] = None
+    pos_synced_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class OrderTrackingOut(BaseModel):
+    order_id: int
+    external_order_id: str
+    local_status: OrderStatus
+    local_payment_status: PaymentStatus
+    pos_sale_id: Optional[str] = None
+    pos_sync_status: Optional[str] = None
+    pos_synced_at: Optional[datetime] = None
+    pos: Optional[dict[str, Any]] = None
 
 
 class CreatePaymentPreferenceInput(BaseModel):

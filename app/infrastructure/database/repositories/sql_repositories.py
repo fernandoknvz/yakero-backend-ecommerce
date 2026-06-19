@@ -73,6 +73,7 @@ def _map_promotion_slot(s) -> PromotionSlot:
 def _map_promotion(p) -> Promotion:
     return Promotion(
         id=p.id,
+        external_code=p.external_code,
         name=p.name,
         description=p.description,
         promotion_type=p.promotion_type,
@@ -117,6 +118,11 @@ def _map_order(o) -> Order:
         created_at=o.created_at, paid_at=o.paid_at,
         ready_at=o.ready_at, delivered_at=o.delivered_at,
         delivery_address_snapshot=o.delivery_address_snapshot,
+        pos_sale_id=o.pos_sale_id,
+        pos_sync_status=o.pos_sync_status,
+        pos_sync_error=o.pos_sync_error,
+        pos_sync_response=o.pos_sync_response,
+        pos_synced_at=o.pos_synced_at,
     )
 
 
@@ -334,6 +340,11 @@ class SQLOrderRepository(OrderRepository):
             payment_provider=order.payment_provider,
             notes=order.notes,
             delivery_address_snapshot=order.delivery_address_snapshot,
+            pos_sale_id=order.pos_sale_id,
+            pos_sync_status=order.pos_sync_status,
+            pos_sync_error=order.pos_sync_error,
+            pos_sync_response=order.pos_sync_response,
+            pos_synced_at=order.pos_synced_at,
         )
         self._db.add(orm)
         await self._db.flush()  # obtener ID
@@ -427,6 +438,43 @@ class SQLOrderRepository(OrderRepository):
         o = result.scalar_one_or_none()
         return _map_order(o) if o else None
 
+    async def mark_pos_sync_success(
+        self,
+        order_id: int,
+        pos_sale_id: Optional[str],
+        response: Optional[dict],
+    ) -> Order:
+        await self._db.execute(
+            update(OrderORM)
+            .where(OrderORM.id == order_id)
+            .values(
+                pos_sale_id=pos_sale_id,
+                pos_sync_status="synced",
+                pos_sync_error=None,
+                pos_sync_response=response,
+                pos_synced_at=datetime.now(UTC),
+            )
+        )
+        return await self.get_by_id(order_id)
+
+    async def mark_pos_sync_failed(
+        self,
+        order_id: int,
+        error: str,
+        response: Optional[dict] = None,
+    ) -> Order:
+        await self._db.execute(
+            update(OrderORM)
+            .where(OrderORM.id == order_id)
+            .values(
+                pos_sync_status="failed",
+                pos_sync_error=error[:1000],
+                pos_sync_response=response,
+                pos_synced_at=None,
+            )
+        )
+        return await self.get_by_id(order_id)
+
 
 class SQLCheckoutSessionRepository(CheckoutSessionRepository):
     def __init__(self, session: AsyncSession):
@@ -475,6 +523,13 @@ class SQLCheckoutSessionRepository(CheckoutSessionRepository):
     async def get_by_external_reference(self, external_reference: str) -> Optional[CheckoutSession]:
         result = await self._db.execute(
             select(CheckoutSessionORM).where(CheckoutSessionORM.session_token == external_reference)
+        )
+        session = result.scalar_one_or_none()
+        return _map_checkout_session(session) if session else None
+
+    async def get_by_created_order_id(self, order_id: int) -> Optional[CheckoutSession]:
+        result = await self._db.execute(
+            select(CheckoutSessionORM).where(CheckoutSessionORM.created_order_id == order_id)
         )
         session = result.scalar_one_or_none()
         return _map_checkout_session(session) if session else None

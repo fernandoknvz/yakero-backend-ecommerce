@@ -51,8 +51,11 @@ class Settings(BaseSettings):
 
     # POS integration
     pos_api_base_url: str = ""
+    pos_internal_base_url: str = ""
     pos_internal_token: str = ""
     pos_catalog_timeout_seconds: float = 10.0
+    pos_order_timeout_seconds: float = 12.0
+    pos_ecommerce_dry_run: bool = False
 
     # Store location (para cálculo de delivery)
     store_lat: float = -33.4094
@@ -180,6 +183,10 @@ class Settings(BaseSettings):
     @property
     def resolved_frontend_public_url(self) -> str:
         return (self.frontend_public_url or self.app_base_url).rstrip("/")
+
+    @property
+    def resolved_pos_internal_base_url(self) -> str:
+        return (self.pos_internal_base_url or self.pos_api_base_url).rstrip("/")
 
 
 @lru_cache()

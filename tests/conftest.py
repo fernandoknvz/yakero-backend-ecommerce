@@ -161,6 +161,7 @@ def build_promotions() -> list[Promotion]:
     return [
         Promotion(
             id=10,
+            external_code="PROMO-10",
             name="Promo sushi night",
             description="Combo nocturno",
             promotion_type="bundle",
@@ -409,6 +410,31 @@ class FakeOrderRepository:
                 return order
         return None
 
+    async def mark_pos_sync_success(self, order_id: int, pos_sale_id: str | None, response: dict | None):
+        order = self.orders[order_id]
+        updated = replace(
+            order,
+            pos_sale_id=pos_sale_id,
+            pos_sync_status="synced",
+            pos_sync_error=None,
+            pos_sync_response=response,
+            pos_synced_at=datetime.now(UTC),
+        )
+        self.orders[order_id] = updated
+        return updated
+
+    async def mark_pos_sync_failed(self, order_id: int, error: str, response: dict | None = None):
+        order = self.orders[order_id]
+        updated = replace(
+            order,
+            pos_sync_status="failed",
+            pos_sync_error=error,
+            pos_sync_response=response,
+            pos_synced_at=None,
+        )
+        self.orders[order_id] = updated
+        return updated
+
 
 class FakeCheckoutSessionRepository:
     sessions: dict[int, CheckoutSession] = {}
@@ -439,6 +465,12 @@ class FakeCheckoutSessionRepository:
     async def get_by_external_reference(self, external_reference: str):
         for session in self.sessions.values():
             if session.external_reference == external_reference:
+                return session
+        return None
+
+    async def get_by_created_order_id(self, order_id: int):
+        for session in self.sessions.values():
+            if session.created_order_id == order_id:
                 return session
         return None
 
@@ -635,6 +667,24 @@ class FakeMercadoPagoService:
         return False
 
 
+class FakePosClient:
+    sent_orders: list[dict] = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    @classmethod
+    def reset(cls):
+        cls.sent_orders = []
+
+    async def send_order_to_pos(self, payload: dict):
+        self.sent_orders.append(payload)
+        return {"accepted": True, "pos_sale_id": f"POS-{payload['external_order_id']}"}
+
+    async def get_pos_order_tracking(self, external_order_id: str):
+        return {"external_order_id": external_order_id, "status": "accepted"}
+
+
 @pytest.fixture(autouse=True)
 def fake_app_dependencies(monkeypatch):
     from app.application.use_cases.auth import auth_use_cases as auth_use_cases_module
@@ -646,12 +696,14 @@ def fake_app_dependencies(monkeypatch):
     from app.infrastructure.api.routers import payments as payments_router_module
     from app.infrastructure.api.routers import users as users_router_module
     from app.infrastructure.api.routers import webhooks as webhooks_router_module
+    from app.application.use_cases.orders import pos_sync as pos_sync_module
     import app.auth as auth_module
 
     FakeUserRepository.reset()
     FakeOrderRepository.reset()
     FakeCheckoutSessionRepository.reset()
     FakePaymentRepository.reset()
+    FakePosClient.reset()
 
     monkeypatch.setattr(auth_router_module, "SQLUserRepository", FakeUserRepository)
     monkeypatch.setattr(users_router_module, "SQLUserRepository", FakeUserRepository)
@@ -662,6 +714,7 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(orders_router_module, "SQLAddressRepository", FakeAddressRepository)
     monkeypatch.setattr(orders_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(orders_router_module, "SQLPromotionRepository", FakePromotionRepository)
+    monkeypatch.setattr(orders_router_module, "PosClient", FakePosClient)
     monkeypatch.setattr(payments_router_module, "SQLOrderRepository", FakeOrderRepository)
     monkeypatch.setattr(payments_router_module, "SQLCheckoutSessionRepository", FakeCheckoutSessionRepository)
     monkeypatch.setattr(payments_router_module, "SQLPaymentRepository", FakePaymentRepository)
@@ -685,6 +738,7 @@ def fake_app_dependencies(monkeypatch):
     monkeypatch.setattr(webhooks_router_module, "SQLCouponRepository", FakeCouponRepository)
     monkeypatch.setattr(webhooks_router_module, "SQLPromotionRepository", FakePromotionRepository)
     monkeypatch.setattr(webhooks_router_module, "MercadoPagoService", FakeMercadoPagoService)
+    monkeypatch.setattr(pos_sync_module, "PosClient", FakePosClient)
     monkeypatch.setattr(auth_module, "SQLUserRepository", FakeUserRepository)
     monkeypatch.setattr(auth_use_cases_module.pwd_context, "hash", lambda secret: f"hashed::{secret}")
     monkeypatch.setattr(

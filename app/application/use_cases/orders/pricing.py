@@ -294,6 +294,8 @@ class OrderPricingService:
             "number": address.number,
             "commune": address.commune,
             "city": address.city,
+            "latitude": address.latitude,
+            "longitude": address.longitude,
             "notes": address.notes,
         }
         return delivery_fee, snapshot

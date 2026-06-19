@@ -83,6 +83,20 @@ class OrderRepository(ABC):
     ) -> Order: ...
     @abstractmethod
     async def get_by_mp_preference(self, preference_id: str) -> Optional[Order]: ...
+    @abstractmethod
+    async def mark_pos_sync_success(
+        self,
+        order_id: int,
+        pos_sale_id: Optional[str],
+        response: Optional[dict],
+    ) -> Order: ...
+    @abstractmethod
+    async def mark_pos_sync_failed(
+        self,
+        order_id: int,
+        error: str,
+        response: Optional[dict] = None,
+    ) -> Order: ...
 
 
 class CheckoutSessionRepository(ABC):
@@ -92,6 +106,8 @@ class CheckoutSessionRepository(ABC):
     async def get_by_id(self, session_id: int) -> Optional[CheckoutSession]: ...
     @abstractmethod
     async def get_by_external_reference(self, external_reference: str) -> Optional[CheckoutSession]: ...
+    @abstractmethod
+    async def get_by_created_order_id(self, order_id: int) -> Optional[CheckoutSession]: ...
     @abstractmethod
     async def update_preference(
         self,

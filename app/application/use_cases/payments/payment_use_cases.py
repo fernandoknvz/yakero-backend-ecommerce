@@ -22,6 +22,7 @@ from ....domain.repositories.interfaces import (
 )
 from ...dtos.schemas import CreateOrderInput, CreatePaymentPreferenceInput, OrderItemInput
 from ..orders.create_order import CreateOrderUseCase
+from ..orders.pos_sync import PosOrderSyncService
 from ..orders.pricing import OrderPricingService
 from ..services.points_service import PointsService
 from .mercadopago_service import MercadoPagoPayment, MercadoPagoPreference, MercadoPagoService
@@ -477,7 +478,16 @@ class ProcessMercadoPagoWebhookUseCase:
             result="order_created",
             order_id=order.id,
         )
-        return order
+        return await PosOrderSyncService(
+            order_repo=self._orders,
+            product_repo=self._product_repo,
+            promotion_repo=self._promotion_repo,
+        ).sync_paid_order(
+            order=order,
+            checkout_session=checkout_session,
+            payment=payment,
+            total_paid=mp_payment.amount or payment.amount or order.total,
+        )
 
     async def _resolve_checkout_session(self, payment: MercadoPagoPayment) -> Optional[CheckoutSession]:
         external_reference = payment.external_reference
@@ -514,6 +524,16 @@ class ProcessMercadoPagoWebhookUseCase:
         )
         if mapped_status == PaymentStatus.PAID.value and updated.can_transition_to(OrderStatus.PAID):
             updated = await self._orders.update_status(updated.id, OrderStatus.PAID)
+            updated = await PosOrderSyncService(
+                order_repo=self._orders,
+                product_repo=self._product_repo,
+                promotion_repo=self._promotion_repo,
+            ).sync_paid_order(
+                order=updated,
+                checkout_session=None,
+                payment=None,
+                total_paid=payment.amount or updated.total,
+            )
         return updated
 
     def _extract_order_id(self, external_reference: Optional[str]) -> Optional[int]:

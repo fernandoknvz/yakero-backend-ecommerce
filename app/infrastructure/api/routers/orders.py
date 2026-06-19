@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database.repositories.sql_repositories import (
     SQLAddressRepository,
+    SQLCheckoutSessionRepository,
     SQLCouponRepository,
     SQLOrderRepository,
     SQLProductRepository,
@@ -13,8 +14,15 @@ from ...database.repositories.sql_repositories import (
 )
 from ...database.session import get_db
 from ..errors import domain_error_to_http
-from ....application.dtos.schemas import CreateOrderInput, OrderOut, OrderPreviewInput, OrderPreviewOut
+from ....application.dtos.schemas import (
+    CreateOrderInput,
+    OrderOut,
+    OrderPreviewInput,
+    OrderPreviewOut,
+    OrderTrackingOut,
+)
 from ....application.use_cases.orders.create_order import CreateOrderUseCase
+from ....application.use_cases.orders.pos_sync import PosOrderSyncService
 from ....application.use_cases.orders.order_use_cases import GetOrderUseCase, GetUserOrdersUseCase
 from ....application.use_cases.orders.pricing import OrderPricingService
 from ....application.use_cases.services.delivery_service import DeliveryFeeService
@@ -23,6 +31,7 @@ from ....auth import get_current_user, get_optional_user, require_role
 from ....domain.exceptions import DomainError
 from ....domain.models.entities import User
 from ....domain.models.enums import UserRole
+from ...clients import PosClient, PosClientError
 
 
 router = APIRouter(prefix="/orders", tags=["Pedidos"])
@@ -145,3 +154,41 @@ async def get_order(
         )
     except DomainError as exc:
         raise domain_error_to_http(exc)
+
+
+@router.get("/{order_id}/tracking", response_model=OrderTrackingOut)
+async def get_order_tracking(
+    order_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    try:
+        order = await GetOrderUseCase(SQLOrderRepository(db)).execute(
+            order_id,
+            user_id=current_user.id if current_user else None,
+        )
+    except DomainError as exc:
+        raise domain_error_to_http(exc)
+
+    checkout_session = await SQLCheckoutSessionRepository(db).get_by_created_order_id(order.id)
+    external_order_id = PosOrderSyncService(
+        order_repo=SQLOrderRepository(db),
+        product_repo=SQLProductRepository(db),
+        promotion_repo=SQLPromotionRepository(db),
+    ).external_order_id(order, checkout_session)
+
+    try:
+        pos_tracking = await PosClient().get_pos_order_tracking(external_order_id)
+    except PosClientError as exc:
+        pos_tracking = {"error": exc.message}
+
+    return OrderTrackingOut(
+        order_id=order.id,
+        external_order_id=external_order_id,
+        local_status=order.status,
+        local_payment_status=order.payment_status,
+        pos_sale_id=order.pos_sale_id,
+        pos_sync_status=order.pos_sync_status,
+        pos_synced_at=order.pos_synced_at,
+        pos=pos_tracking,
+    )

@@ -225,6 +225,11 @@ class OrderORM(Base):
 
     notes = Column(Text)
     delivery_address_snapshot = Column(JSON)
+    pos_sale_id = Column(String(100), index=True)
+    pos_sync_status = Column(String(30), index=True)
+    pos_sync_error = Column(Text)
+    pos_sync_response = Column(JSON)
+    pos_synced_at = Column(DateTime)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     paid_at = Column(DateTime)

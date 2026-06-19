@@ -102,6 +102,7 @@ class PromotionSlot:
 @dataclass
 class Promotion:
     id: Optional[int]
+    external_code: Optional[str]
     name: str
     description: Optional[str]
     promotion_type: str
@@ -186,6 +187,11 @@ class Order:
 
     # snapshot de dirección (para historial inmutable)
     delivery_address_snapshot: Optional[dict] = None
+    pos_sale_id: Optional[str] = None
+    pos_sync_status: Optional[str] = None
+    pos_sync_error: Optional[str] = None
+    pos_sync_response: Optional[dict] = None
+    pos_synced_at: Optional[datetime] = None
 
     def can_transition_to(self, new_status: OrderStatus) -> bool:
         valid_transitions = {

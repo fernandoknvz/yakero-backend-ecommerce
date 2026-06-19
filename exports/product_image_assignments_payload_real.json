@@ -1,0 +1,366 @@
+﻿{
+    "fail_on_missing":  true,
+    "assignments":  [
+                        {
+                            "sku":  "CAS-ACOMP-ARROZ",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/acompanamientos/arroz.webp"
+                        },
+                        {
+                            "sku":  "CAS-ACOMP-ENS-MIXTA",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/acompanamientos/ensalada-mixta.webp"
+                        },
+                        {
+                            "sku":  "CAS-ACOMP-PURE",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/acompanamientos/pure.webp"
+                        },
+                        {
+                            "sku":  "CAS-ACOMP-TALLARINES",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/acompanamientos/tallarines.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-ACELGA-CREMA",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/acelga-crema.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-ALBOND-SALSA",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/albondigas.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-CHARQUI-HUEVO",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/charquican.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-CONSOME-POLLO",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/consome-pollo.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-ENS-CESAR",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/ensalada-cesar.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-GOHAN-MIXTO",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/gohan-mixto.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-HUMITA",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/humita.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-LENTEJ-CARNE",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/lentejas.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-LOMITO-CERDO-PLAN",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/lomito-cerdo.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-MERLUZA-APAN",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/merluza-apanada.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-PASTEL-PAPAS",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/pastel-papas.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-PECHUGA-PAVO",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/pechuga-pavo.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-POLLO-AS-ENT",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/pollo-asado.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-POROTOS-GRAN",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/porotos-granados.webp"
+                        },
+                        {
+                            "sku":  "CAS-MENU-TUTO-ASADO",
+                            "image_url":  "https://cdn.yakero.cl/products/casera/menu/tuto-asado.webp"
+                        },
+                        {
+                            "sku":  "POST-ALFAJOR",
+                            "image_url":  "https://cdn.yakero.cl/products/postres/general/alfajor.webp"
+                        },
+                        {
+                            "sku":  "POST-ALFAJOR-MENDO",
+                            "image_url":  "https://cdn.yakero.cl/products/postres/general/alfajor_mendocino.webp"
+                        },
+                        {
+                            "sku":  "POST-PALMERA",
+                            "image_url":  "https://cdn.yakero.cl/products/postres/general/palmeras.webp"
+                        },
+                        {
+                            "sku":  "POST-PIE-LIMON",
+                            "image_url":  "https://cdn.yakero.cl/products/postres/general/pie_limon.webp"
+                        },
+                        {
+                            "sku":  "POST-QUEQUE",
+                            "image_url":  "https://cdn.yakero.cl/products/postres/general/queque.webp"
+                        },
+                        {
+                            "sku":  "SAND-ASS-CHAC",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/ass/ass_chacarero.webp"
+                        },
+                        {
+                            "sku":  "SAND-ASS-COMP",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/ass/ass_completo.webp"
+                        },
+                        {
+                            "sku":  "SAND-ASS-DINA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/ass/ass_dinamico.webp"
+                        },
+                        {
+                            "sku":  "SAND-ASS-ITAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/ass/ass_italiano.webp"
+                        },
+                        {
+                            "sku":  "SAND-ASS-LUCO-CHAM",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/ass/ass_luco_champinon.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-CHAC",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/sandwich-churrasco-chacarero.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-COMP",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/sandwich-churrasco-completo.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-DINA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/sandwich-churrasco-dinamico.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-ITAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/sandwich-churrasco-italiano.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-LUCO-CHAM",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/sandwich-churrasco-luco-champinon.webp"
+                        },
+                        {
+                            "sku":  "SAND-CHUR-SOLO",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-churrasco/churrasco_solo.webp"
+                        },
+                        {
+                            "sku":  "SAND-LOM-CHAC",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-chacarero.webp"
+                        },
+                        {
+                            "sku":  "SAND-LOM-COMP",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-completo.webp"
+                        },
+                        {
+                            "sku":  "SAND-LOM-DINA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-dinamico.webp"
+                        },
+                        {
+                            "sku":  "SAND-LOM-ITAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/sandwich-lomo-italiano.webp"
+                        },
+                        {
+                            "sku":  "SAND-LOM-LUCO-CHAM",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/sandwich-lomo/lomo_luco_champinon.webp"
+                        },
+                        {
+                            "sku":  "SAND-SALCH-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/salchipapas.webp"
+                        },
+                        {
+                            "sku":  "SAND-SALCH-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/salchipapas.webp"
+                        },
+                        {
+                            "sku":  "SAND-SALCH-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/salchipapas.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-CHOR-CEB-HUE-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-chor-ceb-hue-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-CHOR-CEB-HUE-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-chor-ceb-hue-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-CHOR-CEB-HUE-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-chor-ceb-hue-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-TOC-CHAM-YAKE-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-toc-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-TOC-CHAM-YAKE-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-toc-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CAR-TOC-CHAM-YAKE-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-car-toc-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CARMEC-GUAC-CHED-CEB-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-carmec-guac-ched-ceb-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CARMEC-GUAC-CHED-CEB-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-carmec-guac-ched-ceb-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-CARMEC-GUAC-CHED-CEB-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-carmec-guac-ched-ceb-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-POL-TOC-CEB-CHAM-YAKE-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-pol-toc-ceb-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-POL-TOC-CEB-CHAM-YAKE-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-pol-toc-ceb-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-POL-TOC-CEB-CHAM-YAKE-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-pol-toc-ceb-cham-yake-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-VEG-ZAP-ZAN-CEB-PIM-POR-GRA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-veg-zap-zan-ceb-pim-por-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-VEG-ZAP-ZAN-CEB-PIM-POR-IND",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-veg-zap-zan-ceb-pim-por-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-SUPR-VEG-ZAP-ZAN-CEB-PIM-POR-MED",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/papas-fritas/sand-supr-veg-zap-zan-ceb-pim-por-gra-med-ind.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-CHAC",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_chacarero.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-COMP",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_completo.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-DINA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_dinamico.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-ITAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_italiano.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-LUCO-CHAM",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_luco_champinon.webp"
+                        },
+                        {
+                            "sku":  "SAND-VIE16-SOLA",
+                            "image_url":  "https://cdn.yakero.cl/products/sandwich/vienesas-16-cm/vienesa_sola.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ENT-CAM-FURAY",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/entradas/camarones-furay.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ENT-CEVI-SAL-CAM",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/entradas/ceviche-de-salmon-y-camarones.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ENT-GYOZAS",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/entradas/gyozas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ENT-POL-FURAY",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/entradas/pollo-furay.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ENT-SASH-12-MIX",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/entradas/sashimi-12-cortes-mixto.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-GOH-CAM-APAN",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/gohan-y-poked/gohan-camaron-apanado.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-GOH-CAM-SAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/gohan-y-poked/gohan-camaron-salmon.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-GOH-POL-CRISPY",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/gohan-y-poked/gohan-pollo-crispy.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-FUTOMAKI",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/special-rolls/futomaki-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-RAINBOW",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/special-rolls/rainbow-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-SAKE-FURAY",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/special-rolls/sake-furay.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-TORI",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/special-rolls/tori-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-TORTA",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/premium/torta-de-sushi.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRM-YAK-ACEV-SA",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/special-rolls/yakero-acevichado-sin-arroz.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-020",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-20-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-030",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-30-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-040",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-40-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-050",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-50-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-060",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-60-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-080",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-80-piezas.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-PRO-YAK-TORI",
+                            "image_url":  "https://cdn.yakero.cl/promotions/promo-yakero-tori.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ROL-AVO",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/rolls/avocado-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ROL-CAL",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/rolls/california-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ROL-CHEE",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/rolls/cheese-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ROL-FURAY",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/rolls/furay-roll.webp"
+                        },
+                        {
+                            "sku":  "SUSHI-ROL-SAKE",
+                            "image_url":  "https://cdn.yakero.cl/products/sushi/rolls/sake-roll.webp"
+                        }
+                    ],
+    "dry_run":  false
+}
