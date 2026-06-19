@@ -27,3 +27,4 @@ pytest-cache-files-*/
 .vscode/
 .DS_Store
 Thumbs.db
+.venv311/
